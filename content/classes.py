@@ -570,7 +570,7 @@ class media:
                 if regex.search(str(self.year), releases.rename(self.title.replace(str(self.year), '') + ' ' + str(self.year))):
                     title = title.replace('.' + str(self.year), '')
                     if year != "":
-                        return '[^A-Za-z0-9]*(' + title + ':?.)\(?\[?(' + str(year) + ')'
+                        return '[^A-Za-z0-9]*(' + title + ':?.*)\(?\[?(' + str(year) + ')'
                     return '[^A-Za-z0-9]*(' + title + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')'
                 else:
                     title = title.replace('.' + str(self.year), '')
