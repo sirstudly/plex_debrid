@@ -30,8 +30,10 @@ def logerror(response):
 
 def get(url, timeout=60):
     try:
+        ui_print("[plex] Processing (get): " + url)
         response = session.get(url, headers=headers, timeout=timeout)
         logerror(response)
+        ui_print("[plex] (get) response: " + repr(response), debug=ui_settings.debug)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         return response
     except Exception as e:
@@ -40,8 +42,10 @@ def get(url, timeout=60):
 
 def post(url, data):
     try:
+        ui_print("[plex] Processing (post): " + url)
         response = session.post(url, data=data, headers=headers)
         logerror(response)
+        ui_print("[plex] (post) response: " + repr(response), debug=ui_settings.debug)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         return response
     except Exception as e:
@@ -128,6 +132,8 @@ class watchlist(classes.watchlist):
         elif item.type == 'movie':
             self.data.append(movie(item.ratingKey))
 
+    # collect all new unique watchlisted items ACROSS ALL USERS by retrieving user watchlists and adding them to self.data
+    # (then remove any that are no longer in the watchlist which were added in previous runs)
     def update(self):
         update = False
         new_watchlist = []
@@ -172,6 +178,7 @@ class season(classes.media):
         self.__dict__.update(other.__dict__)
         self.EID = setEID(self)
         self.Episodes = []
+        ui_print("[plex] Processing " + self.parentTitle + " " + self.title)
         token = users[0][1]
         if library.ignore.name in classes.ignore.active:
             for user in users:
@@ -880,7 +887,8 @@ class library(classes.library):
         ui_print('done')
         current_library = copy.deepcopy(list_)
         if first_load and updated:
-            store.save(current_library,"plex","metadata")       
+            ui_print('[plex] saving library cache.')
+            store.save(current_library,"plex","metadata")
         return list_
 
 def search(query, library=[]):
