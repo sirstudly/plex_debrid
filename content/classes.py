@@ -952,6 +952,9 @@ class media:
 
     def released(self):
         try:
+            if not hasattr(self, "originallyAvailableAt"):
+                return False  # not available yet?
+
             released = datetime.datetime.utcnow(
             ) - datetime.datetime.strptime(self.originallyAvailableAt, '%Y-%m-%d')
             if hasattr(self, "offset_airtime"):
