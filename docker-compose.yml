@@ -1,0 +1,10 @@
+version: '3'
+
+services:
+  app:
+    build: .
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./settings.json:/settings.json
+      - ./ignored.txt:/ignored.txt
