@@ -119,7 +119,7 @@ def scrape(query, altquery):
 
     ui_print('[zilean] ' + str(len(response)) + ' results found.')
     for result in response[:]:
-        if regex.match(r'(' + altquery.replace('.', '\.').replace("\.*", ".*") + ')', result.title, regex.I):
+        if regex.match(r'(' + altquery.replace('.', '\.').replace("\.*", ".*") + ')', result.rawTitle, regex.I):
             links = ['magnet:?xt=urn:btih:' + result.infoHash + '&dn=&tr=']
             seeders = 0  # not available
             scraped_releases += [releases.release(
