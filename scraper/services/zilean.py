@@ -74,12 +74,12 @@ def scrape(query, altquery):
              if regex.search(r'(?<=S)([0-9]+)', matches_regex, regex.I) else None)
         e = (regex.search(r'(?<=E)([0-9]+)', matches_regex, regex.I).group()
              if regex.search(r'(?<=E)([0-9]+)', matches_regex, regex.I) else None)
-        if s is not None:
+        if s is not None and int(s) != 0:
             opts.append('season=' + str(int(s)))
-            title = re.sub(r'S[0-9]+', '', title, flags=re.IGNORECASE).strip()
         if e is not None and int(e) != 0:
             opts.append('episode=' + str(int(e)))
-            title = re.sub(r'E[0-9]+', '', title, flags=re.IGNORECASE).strip()
+        title = re.sub(r'S[0-9]+', '', title, flags=re.IGNORECASE).strip()
+        title = re.sub(r'E[0-9]+', '', title, flags=re.IGNORECASE).strip()
     else:
         # find year match at the end of the query string
         year_regex = regex.search(r'(.*)\.([12][0-9]{3})$', query, regex.I)
