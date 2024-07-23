@@ -30,10 +30,10 @@ def logerror(response):
 
 def get(url, timeout=60):
     try:
-        ui_print("[plex] Processing (get): " + url)
+        ui_print("[plex] Processing (get): " + url + " ...")
         response = session.get(url, headers=headers, timeout=timeout)
         logerror(response)
-        ui_print("[plex] (get) response: " + repr(response), debug=ui_settings.debug)
+        ui_print("done")
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         return response
     except Exception as e:
