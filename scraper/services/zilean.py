@@ -87,7 +87,7 @@ def scrape(query, altquery):
             opts.append('year=' + year_regex.group(2))
             title = year_regex.group(1)
 
-    title = title.replace('.', ' ').replace('?', ' ').strip()
+    title = title.replace('.?', '').replace('.', ' ').replace('?', ' ').strip()
     opts.append('query=' + urllib.parse.quote(title))
 
     if base_url.endswith('/'):
