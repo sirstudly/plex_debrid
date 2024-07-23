@@ -566,7 +566,6 @@ class media:
                 elif self.type == 'episode':
                     title = releases.rename(self.grandparentTitle)
             title = title.replace('[', '\[').replace(']', '\]')
-            title = title.replace(".and.", ".(and|&|\+).")  # handle ampersand/plus in lieu of "and"
             if self.type == 'movie':
                 if regex.search(str(self.year), releases.rename(self.title.replace(str(self.year), '') + ' ' + str(self.year))):
                     title = title.replace('.' + str(self.year), '')
@@ -1084,7 +1083,7 @@ class media:
     def collect(self, refresh_=True):
         for refresh_service in refresh():
             if refresh_service.__module__ == self.__module__ or (self.__module__ in ["content.services.trakt", "releases", "content.services.overseerr", "content.services.plex"] and refresh_service.__module__ in ["content.services.plex", "content.services.jellyfin"]):
-                if refresh_ or refresh_service.name == "Plex Lables":
+                if refresh_ or refresh_service.name == "Plex Labels":
                     refresh_service(self)
             elif self.__module__ in ["content.services.plex", "content.services.overseerr"] and refresh_service.__module__ == "content.services.trakt":
                 try:
