@@ -51,6 +51,7 @@ This is a work in progress, and im not a professional programmer. shits not read
    - <img src="https://progsoft.net/images/rarbg-icon-648af4dcc6ec63ee49d6c050af63d2547c74d46c.png" height="16"> **[RARBG](https://rarbg.to/)**
    - <img src="https://1337x.to/favicon.ico" height="16"> **[1337X](https://1337x.to/)**
    - <img src="https://nyaa.si/static/favicon.png" height="16"> **[NYAA](https://nyaa.si/)**
+   - <img src="https://torbox.app/favicon-32x32.png" height="16"> **[Torbox](https://torbox.app/)**
 - Defining multiple, completely customizable versions to download (2160p HDR, 1080p SDR, etc)
 - Checking for cached releases and adding them to:
    - <img src="https://fcdn.real-debrid.com/0818/favicons/favicon.ico" height="16"> **[RealDebrid](http://real-debrid.com/?id=5708990)**
@@ -499,6 +500,15 @@ If github is not your cup of tea;
 >  - Zilean is a service that allows you to search for [DebridMediaManager](https://github.com/debridmediamanager/debrid-media-manager) sourced arr-less content.
 >  - You can integrate zilean into plex_debrid by navigating to '/Settings/Scraper/Sources/Edit/Add source/zilean'.
 >  - Details of this project can be found at https://github.com/iPromKnight/zilean
+>
+></details>
+>
+><details>
+>  <summary><b><u><img src="https://torbox.app/favicon-32x32.png" height="16"> Torbox:</u></b></summary>
+>  <summary><b><u>torbox:</u></b></summary>
+>  
+>  - Torbox is an easy-to-use, modern, private, and secure all-in-one platform for downloading torrents, accessing hosters, and using the Usenet.
+>  - You can integrate torbox into plex_debrid by navigating to '/Settings/Scraper/Sources/Edit/Add source/torbox'.
 >
 ></details>
  
