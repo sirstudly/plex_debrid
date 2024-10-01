@@ -407,6 +407,8 @@ settings_list = [
         setting('Put.io API Key',
                 'Please open your favorite browser, log into your put.io account and open "http://put.io/link". Enter this code: ',
                 debrid.services.putio, 'api_key', hidden=True, oauth=True),
+        setting('Torbox API Key', 'Please enter your Torbox API Key: ', debrid.services.torbox, 'api_key',
+                hidden=True),
     ]
         ],
     ['UI Settings', [

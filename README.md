@@ -59,6 +59,7 @@ This is a work in progress, and im not a professional programmer. shits not read
    - <img src="https://cdn.alldebrid.com/lib/images/default/favicon.png" height="16"> **[AllDebrid](https://alldebrid.com/)**
    - <img src="https://cdn.debrid-link.com/favicon.ico?i=2" height="16"> **[DebridLink](https://debrid-link.com/)**
    - <img src="https://app.put.io/assets/favicon-32x32.png" height="16"> **[PUT.io (no check for cached releases)](https://put.io/)**
+   - <img src="https://torbox.app/favicon-32x32.png" height="16"> **[Torbox](https://torbox.app/)**
 - Refreshing your personal media server libraries (fully or partially) to make the content available to watch for:
    - <img src="https://app.plex.tv/desktop/favicon.ico" height="16"> **[Plex](https://plex.tv/)**
    - <img src="https://jellyfin.org/images/favicon.ico" height="16"> **[Jellyfin](https://jellyfin.org/)**
@@ -206,6 +207,28 @@ If github is not your cup of tea;
 >  http://help.put.io/en/articles/3480094-plex-rclone
 >  
 >You can mount your newly created remote by running the command 'rclone mount your-remote X: --dir-cache-time 10s' (replace 'your-remote' with your remote name, replace X with a drive letter of your choice or replace 'X:' with a destination folder)
+>  
+>  *You can run rclone as a background service by adding the mounting tag '--no-console' (Windows) or '--deamon' (Linux, Mac, etc)*
+></details>
+>
+><details>
+>  <summary><b><u><img src="https://torbox.app/favicon-32x32.png" height="16"> Mounting Torbox</u></b></summary>
+>  
+>  1. Install the official rclone software: https://rclone.org/install/
+>  2. configure rclone by running the command 'rclone config' (could be './rclone config' depending on your os)
+>  3. create a new remote by typing 'n'
+>  4. give your remote a name (e.g. 'your-remote')
+>  5. choose '55) WebDAV' as your remote type
+>  6. enter 'https://webdav.torbox.app/' as the server url
+>  7. choose option '7) Other site/service or software'
+>  8. enter your torbox user name/email
+>  9. choose option 'y) yes, enter in my own password'
+>  10. enter your torbox password
+>  11. confirm your torbox password
+>  12. choose n) no, when asked to edit advanced config
+>  13. choose y) yes, this is OK to save this remote.
+>  14. You can mount your newly created remote by running the command 'rclone mount your-remote: X: --dir-cache-time 10s' (replace 'your-remote' with your remote name, replace X with a drive letter of your choice or replace 'X:' with a destination folder)
+>  15. You've successfully created a virtual drive of your torbox service!
 >  
 >  *You can run rclone as a background service by adding the mounting tag '--no-console' (Windows) or '--deamon' (Linux, Mac, etc)*
 ></details>
