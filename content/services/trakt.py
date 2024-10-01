@@ -149,7 +149,7 @@ def setup(self, new=False):
         lists = [users[0][0] + "'s watchlist"]
 
 def logerror(response):
-    if not response.status_code == 200:
+    if response.status_code not in [200, 201]:
         ui_print("[trakt] error: " + str(response.content), debug=ui_settings.debug)
     if response.status_code == 401:
         ui_print("[trakt] error: (401 unauthorized): trakt api key for user '" + current_user[
