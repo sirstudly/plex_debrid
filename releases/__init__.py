@@ -1054,8 +1054,8 @@ class sort:
                             return True
                         return False
                 else:
-                    if self.operator == "==" and float(self.value) == 0:
-                        return True
+                    if self.operator == "==":
+                        return float(self.value) == 0
                     if self.operator == ">=":
                         return False
                     if self.operator == "<=":
