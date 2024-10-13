@@ -216,9 +216,15 @@ def check(element, force=False):
         else:
             ui_print("[torbox] error (missing torrent hash): ignoring release '" + release.title + "'")
             element.Releases.remove(release)
-    if len(hashes) > 0:
-        response = get('https://api.torbox.app/v1/api/torrents/checkcached?format=list&list_files=true&hash=' + ','.join(hashes))
-        ui_print("[torbox] checking and sorting all release files ...", ui_settings.debug)
+
+    # we have a hard-limit of 190ish hashes before we get an error for using an overlong URI so split them up if so
+    offset = 0
+    hash_limit = 190
+    ui_print("[torbox] checking and sorting all release files ...", ui_settings.debug)
+    hashes = list(hashes)  # so we can splice it
+    while offset < len(hashes):
+        response = get('https://api.torbox.app/v1/api/torrents/checkcached?format=list&list_files=true&hash=' + ','.join(hashes[offset:offset + hash_limit]))
+        offset += hash_limit
         for release in element.Releases:
             release.files = []
             release_hash = release.hash.lower()
