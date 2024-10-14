@@ -5,10 +5,9 @@ import base64
 import json
 name = "comet"
 
-request_timeout_sec = 60
-rate_limit_sec = 10  # minimum number of seconds between requests
+request_timeout_sec = "60"
+rate_limit_sec = "10"  # minimum number of seconds between requests
 manifest_json_url = ""  # this is mandatory otherwise non-cached searches will fail without a valid debrid account
-session = custom_session(get_rate_limit=rate_limit_sec, post_rate_limit=rate_limit_sec)
 
 
 def request(func, *args):
@@ -33,16 +32,9 @@ def request(func, *args):
     return json_response
 
 
-def get(url: str) -> requests.Response:
+def get(session: requests.Session, url: str) -> requests.Response:
     ui_print(f"[comet] GET url: {url} ...", ui_settings.debug)
-    response = session.get(url, timeout=request_timeout_sec)
-    ui_print("done", ui_settings.debug)
-    return response
-
-
-def post(url: str, body: dict) -> requests.Response:
-    ui_print(f"[comet] POST url: {url} with {repr(body)} ...", ui_settings.debug)
-    response = session.post(url, json=body, timeout=request_timeout_sec)
+    response = session.get(url, timeout=int(request_timeout_sec))
     ui_print("done", ui_settings.debug)
     return response
 
@@ -121,17 +113,18 @@ def scrape(query, altquery):
         return []
 
     ui_print(f'[comet]: searching for {type}s with ID={imdb_id}', ui_settings.debug)
+    session = custom_session(get_rate_limit=float(rate_limit_sec), post_rate_limit=float(rate_limit_sec))
     if type == 'movie':
-        return scrape_imdb_movie(base_url, _get_base64_config(), imdb_id)
-    return scrape_imdb_series(base_url, _get_base64_config(), imdb_id, s, e)
+        return scrape_imdb_movie(session, base_url, _get_base64_config(), imdb_id)
+    return scrape_imdb_series(session, base_url, _get_base64_config(), imdb_id, s, e)
 
 
-def scrape_imdb_movie(base_url: str, base64_config: str, imdb_id: str) -> list:
-    return collate_releases_from_response(request(get, f'{base_url}/{base64_config}/stream/movie/{imdb_id}.json'))
+def scrape_imdb_movie(session: requests.Session, base_url: str, base64_config: str, imdb_id: str) -> list:
+    return collate_releases_from_response(request(get, session, f'{base_url}/{base64_config}/stream/movie/{imdb_id}.json'))
 
 
-def scrape_imdb_series(base_url: str, base64_config: str, imdb_id: str, season: int = 1, episode: int = 1) -> list:
-    return collate_releases_from_response(request(get, f'{base_url}/{base64_config}/stream/series/{imdb_id}:{str(season)}:{str(episode)}.json'))
+def scrape_imdb_series(session: requests.Session, base_url: str, base64_config: str, imdb_id: str, season: int = 1, episode: int = 1) -> list:
+    return collate_releases_from_response(request(get, session, f'{base_url}/{base64_config}/stream/series/{imdb_id}:{str(season)}:{str(episode)}.json'))
 
 
 def collate_releases_from_response(response: requests.Response) -> list:
