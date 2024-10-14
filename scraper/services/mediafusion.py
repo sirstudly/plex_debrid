@@ -6,10 +6,9 @@ name = "mediafusion"
 
 base_url = "https://mediafusion.elfhosted.com"
 api_password = ""
-request_timeout_sec = 60
-rate_limit_sec = 10  # minimum number of seconds between requests
+request_timeout_sec = "60"
+rate_limit_sec = "10"  # minimum number of seconds between requests
 manifest_json_url = ""
-session = custom_session(get_rate_limit=rate_limit_sec, post_rate_limit=rate_limit_sec)
 
 
 def request(func, *args):
@@ -34,16 +33,16 @@ def request(func, *args):
     return json_response
 
 
-def get(url: str) -> requests.Response:
+def get(session: requests.Session, url: str) -> requests.Response:
     ui_print(f"[mediafusion] GET url: {url} ...", ui_settings.debug)
-    response = session.get(url, timeout=request_timeout_sec)
+    response = session.get(url, timeout=int(request_timeout_sec))
     ui_print("done", ui_settings.debug)
     return response
 
 
-def post(url: str, body: dict) -> requests.Response:
+def post(session: requests.Session, url: str, body: dict) -> requests.Response:
     ui_print(f"[mediafusion] POST url: {url} with {repr(body)} ...", ui_settings.debug)
-    response = session.post(url, json=body, timeout=request_timeout_sec)
+    response = session.post(url, json=body, timeout=int(request_timeout_sec))
     ui_print("done", ui_settings.debug)
     return response
 
@@ -114,6 +113,7 @@ def scrape(query, altquery):
 
     plain_text = ""
     imdb_ids = []
+    session = custom_session(get_rate_limit=float(rate_limit_sec), post_rate_limit=float(rate_limit_sec))
     if regex.search(r'(tt[0-9]+)', altquery, regex.I):
         imdb_ids += [regex.search(r'(tt[0-9]+)', altquery, regex.I).group()]
     elif manual_search:
@@ -121,10 +121,10 @@ def scrape(query, altquery):
         try:
             if type == "show":
                 url = f"{base_url}/catalog/series/mediafusion_search_series/search={plain_text}.json"
-                meta = request(get, url)
+                meta = request(get, session, url)
             else:
                 url = f"{base_url}/catalog/movie/mediafusion_search_movies/search={plain_text}.json"
-                meta = request(get, url)
+                meta = request(get, session, url)
             # collate all matched IMDB IDs
             imdb_ids += [m.id for m in meta.metas]
         except:
@@ -134,11 +134,11 @@ def scrape(query, altquery):
                     s = 1
                     e = 1
                     url = f"{base_url}/catalog/series/mediafusion_search_series/search={plain_text}.json"
-                    meta = request(get, url)
+                    meta = request(get, session, url)
                 else:
                     type = "movie"
                     url = f"{base_url}/catalog/movie/mediafusion_search_movies/search={plain_text}.json"
-                    meta = request(get, url)
+                    meta = request(get, session, url)
                 # collate all matched IMDB IDs
                 imdb_ids += [m.id for m in meta.metas]
             except Exception as e:
@@ -149,27 +149,27 @@ def scrape(query, altquery):
         return []
 
     try:
-        mediafusion_encrypted_str = _get_encrypted_string()
+        mediafusion_encrypted_str = _get_encrypted_string(session)
     except Exception as e:
         ui_print('[mediafusion] error: Failed to compute encrypted string. ' + str(e))
         return []
 
     ui_print(f'[mediafusion]: searching for {type}s with IDs [{str(imdb_ids)}]', ui_settings.debug)
     if type == 'movie':
-        return flatten_list([scrape_imdb_movie(mediafusion_encrypted_str, imdb_id, plain_text) for imdb_id in imdb_ids])
-    return flatten_list([scrape_imdb_series(mediafusion_encrypted_str, imdb_id, s, e) for imdb_id in imdb_ids])
+        return flatten_list([scrape_imdb_movie(session, mediafusion_encrypted_str, imdb_id, plain_text) for imdb_id in imdb_ids])
+    return flatten_list([scrape_imdb_series(session, mediafusion_encrypted_str, imdb_id, s, e) for imdb_id in imdb_ids])
 
 
-def scrape_imdb_movie(encrypted_str: str, imdb_id: str, query_text: str = None) -> list:
+def scrape_imdb_movie(session: requests.Session, encrypted_str: str, imdb_id: str, query_text: str = None) -> list:
     url = f'{base_url}/{encrypted_str}/stream/movie/{imdb_id}.json'
-    response = request(get, url)
+    response = request(get, session, url)
 
     # fallback to TV series search if we don't get any results
     if not hasattr(response, "streams") or len(response.streams) == 0:
         if query_text is not None and query_text != "":
             try:
                 url = f"{base_url}/catalog/series/mediafusion_search_series/search={query_text}.json"
-                meta = request(get, url)
+                meta = request(get, session, url)
                 return [scrape_imdb_series(encrypted_str, m.id) for m in meta.metas]
             except Exception as e:
                 ui_print(f'[mediafusion] error: could not find IMDB ID for {query_text}. ' + str(e))
@@ -177,10 +177,10 @@ def scrape_imdb_movie(encrypted_str: str, imdb_id: str, query_text: str = None) 
     return collate_releases_from_response(response)
 
 
-def scrape_imdb_series(encrypted_str: str, imdb_id: str, season: int = 1, episode: int = 1) -> list:
+def scrape_imdb_series(session: requests.Session, encrypted_str: str, imdb_id: str, season: int = 1, episode: int = 1) -> list:
     try:
         url = f'{base_url}/{encrypted_str}/stream/series/{imdb_id}:{str(season)}:{str(episode)}.json'
-        return collate_releases_from_response(request(get, url))
+        return collate_releases_from_response(request(get, session, url))
     except Exception as e:
         ui_print('[mediafusion] error: ' + str(e))
         return []
@@ -214,7 +214,7 @@ def collate_releases_from_response(response: requests.Response) -> list:
     return scraped_releases
 
 
-def _get_encrypted_string() -> str:
+def _get_encrypted_string(session: requests.Session) -> str:
 
     if manifest_json_url.endswith("manifest.json"):
         return manifest_json_url.split("/")[-2]
@@ -287,7 +287,7 @@ def _get_encrypted_string() -> str:
     if api_password != "":
         payload |= {"api_password": api_password}
 
-    response = request(post,f"{base_url}/encrypt-user-data", payload)
+    response = request(post,session, f"{base_url}/encrypt-user-data", payload)
     if not hasattr(response, "encrypted_str"):
         raise Exception("[mediafusion] Unable to retrieve encrypted string")
     return response.encrypted_str
