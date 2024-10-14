@@ -280,6 +280,9 @@ class setting:
             while not working:
                 print(self.name + ' - current value: ' + str(getattr(self.cls, self.key)))
                 print()
+                if not self.help == '':
+                    print(self.help)
+                    print()
                 if self.oauth:
                     device_code, user_code = self.cls.oauth()
                     print(self.prompt + str(user_code))
@@ -388,7 +391,11 @@ settings_list = [
         setting('Mediafusion Scraper Parameters', 'Please enter a valid Mediafusion manifest URL: ', scraper.services.mediafusion, 'manifest_json_url', entry="parameter",
                 help='This setting lets you control the mediafusion scraping parameters. Visit "https://mediafusion.elfhosted.com/configure" and configure your settings. Please choose "Direct Torrent (Free)" as the debrid service. Click on "Share Manifest URL" and paste it here.',
                 hidden=True),
-    ]
+        setting('Comet Request Timeout', 'Please enter the request timeout in seconds: ', scraper.services.comet, 'request_timeout_sec', hidden=True),
+        setting('Comet Rate Limit', 'Please enter the minimum number of seconds between requests: ', scraper.services.comet, 'rate_limit_sec', hidden=True),
+        setting('Comet Scraper Parameters', 'Please enter a valid Comet manifest URL: ', scraper.services.comet, 'manifest_json_url', entry="parameter",
+                help='This setting lets you control the comet scraping parameters. Visit "https://comet.elfhosted.com/configure" and configure your settings. Click on "Copy Link" and paste it here.', hidden=True),
+            ]
         ],
     ['Debrid Services', [
         setting('Debrid Services', [''], debrid.services, 'active', required=True, preflight=True, entry="service",
