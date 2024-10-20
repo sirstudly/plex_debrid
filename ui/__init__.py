@@ -488,8 +488,6 @@ def threaded(stop):
                 ui_print("couldnt sort monitored media by newest, using default order.", ui_settings.debug)
             library = content.classes.library()[0]()
             timeout_counter = 0
-            if len(library) == 0:
-                continue
             ui_print('checking new content ...')
             t0 = time.time()
             for element in unique(watchlists):

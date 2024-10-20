@@ -808,6 +808,7 @@ class library(classes.library):
             if section == '':
                 continue
             section_response = []
+            section_title = ''
             for type in types:
                 url = library.url + '/library/sections/' + section + '/all?type=' + type + '&X-Plex-Token=' + users[0][1]
                 response = get(url)
@@ -815,14 +816,15 @@ class library(classes.library):
                     if hasattr(response.MediaContainer, 'Metadata'):
                         for element in response.MediaContainer.Metadata:
                             section_response += [classes.media(element)]
+                    if hasattr(response.MediaContainer, 'librarySectionTitle'):
+                        section_title = response.MediaContainer.librarySectionTitle
             if len(section_response) == 0:
-                ui_print("[plex error]: couldnt reach local plex library section '" + section + "' at server address: " + library.url + " - or this library really is empty.")
-                list_ = []
-                break
+                ui_print(f"[plex error]: local plex library section [{section}]: {section_title} at server address: {library.url} is empty!")
+                continue
             else:
                 list_ += section_response
         if len(list_) == 0:
-            ui_print("[plex error]: Your library seems empty. To prevent unwanted behaviour, no further downloads will be started. If your library really is empty, please add at least one media item manually.")
+            ui_print("[plex error]: No library items were found.")
         shows = {}
         seasons = {}
         for item in list_:
