@@ -137,17 +137,25 @@ def collate_releases_from_response(response: requests.Response) -> list:
     ui_print(f"[comet] found {str(len(response.streams))} streams", ui_settings.debug)
     for result in response.streams:
 
-        if result.title == "Invalid Comet config." or regex.search(r'(?<=Invalid )(.*)(?= account)', result.title):
-            ui_print(f'[comet] error: {result.title}')
+        if hasattr(result, "description") and (result.description == "Invalid Comet config." or regex.search(r'(?<=Invalid )(.*)(?= account)', result.description)):
+            ui_print(f'[comet] error: {result.description}')
             return scraped_releases
-        elif not hasattr(result, "url"):
-            ui_print(f'[comet]: error: Missing URL in result {result.title}')
+        elif not hasattr(result, "description"):
+            ui_print(f'[comet] error: Missing description in result')
+            continue
+        elif not hasattr(result, "url") and not hasattr(result, "infoHash"):
+            ui_print(f'[comet] error: Missing url/infoHash in result {result.description}')
             continue
 
         try:
-            title = result.title.split("\n")[0]
-            infohash_pattern = regex.compile(r"(?!.*playback\/)[a-fA-F0-9]{40}")
-            infohash = infohash_pattern.search(result.url).group()
+            title = result.description.split("\n")[0]
+            infohash = False
+            if hasattr(result, "infoHash"):
+                infohash = result.infoHash
+            else:
+                infohash_pattern = regex.compile(r"(?!.*playback\/)[a-fA-F0-9]{40}")
+                infohash = infohash_pattern.search(result.url).group()
+
             if not infohash:
                 ui_print(f'[comet]: error: infohash not found for title: {title}')
                 continue
@@ -155,8 +163,8 @@ def collate_releases_from_response(response: requests.Response) -> list:
             size = int(result.torrentSize) / 1000000000 if hasattr(result, "torrentSize") else 0
             links = ['magnet:?xt=urn:btih:' + infohash + '&dn=&tr=']
             seeds = 0  # not available
-            source = regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.title).group() \
-                if regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.title) else "unknown"
+            source = regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.description).group() \
+                if regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.description) else "unknown"
             scraped_releases += [releases.release(
                 '[comet: '+source+']', 'torrent', title, [], size, links, seeds)]
         except Exception as e:
