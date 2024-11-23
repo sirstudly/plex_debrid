@@ -148,12 +148,13 @@ def download(element, stream=True, query='', force=False):
                     version_files.append(debrid_file)
                 release.files = [version(version_files)]
                 cached_ids = [vf.id for vf in version_files if vf.wanted and not vf.unwanted]
-                post('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/' + torrent_id, {'files': ",".join(map(str, cached_ids))})
-                ui_print('[realdebrid] selectFiles response ' + repr(response), ui_settings.debug)
+                if len(cached_ids) > 0:
+                    post('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/' + torrent_id, {'files': ",".join(map(str, cached_ids))})
+                    ui_print('[realdebrid] selectFiles response ' + repr(response), ui_settings.debug)
 
                 response = get('https://api.real-debrid.com/rest/1.0/torrents/info/' + torrent_id)
                 actual_title = ""
-                if len(response.links) == len(cached_ids):
+                if len(response.links) == len(cached_ids) and len(cached_ids) > 0:
                     actual_title = response.filename
                     release.download = response.links
                 else:
@@ -173,7 +174,7 @@ def download(element, stream=True, query='', force=False):
                                 delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
                                 continue
                     else:
-                        ui_print( f'[realdebrid] error: selecting this cached file [{response.status}] combination returned a .rar archive - trying a different file combination.')
+                        ui_print( f'[realdebrid] error: torrent is in status [{response.status}] - trying a different file combination.')
                         delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
                         continue
                 if response.status == 'downloaded':
