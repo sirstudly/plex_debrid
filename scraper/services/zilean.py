@@ -119,12 +119,12 @@ def scrape(query, altquery):
 
     ui_print('[zilean] ' + str(len(response)) + ' results found.')
     for result in response[:]:
-        if regex.match(r'(' + altquery + ')', result.rawTitle, regex.I):
-            links = ['magnet:?xt=urn:btih:' + result.infoHash + '&dn=&tr=']
+        if regex.match(r'(' + altquery + ')', result.raw_title, regex.I):
+            links = ['magnet:?xt=urn:btih:' + result.info_hash + '&dn=&tr=']
             seeders = 0  # not available
             scraped_releases += [releases.release(
-                '[zilean]', 'torrent', result.rawTitle, [], float(result.size) / 1000000000, links, seeders)]
+                '[zilean]', 'torrent', result.raw_title, [], float(result.size) / 1000000000, links, seeders)]
         else:
-            ui_print('[zilean] skipping ' + result.rawTitle + ' because it does not match deviation ' + altquery)
+            ui_print('[zilean] skipping ' + result.raw_title + ' because it does not match deviation ' + altquery)
 
     return scraped_releases
