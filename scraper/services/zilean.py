@@ -5,7 +5,7 @@ import urllib.parse
 import releases
 import re
 
-base_url = "http://localhost:8181"
+base_url = "http://zilean.zilean:8181"
 name = "zilean"
 timeout_sec = 10
 session = requests.Session()

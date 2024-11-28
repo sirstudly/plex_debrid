@@ -38,7 +38,7 @@ def post(url, data):
 
 class library():
     name = 'Jellyfin Library'
-    url = 'http://localhost:8096'
+    url = 'http://jellyfin:8096'
 
     def setup(cls, new=False):
         from settings import settings_list

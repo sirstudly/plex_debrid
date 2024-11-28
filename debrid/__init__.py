@@ -20,7 +20,7 @@ def download(element, stream=True, query='', force=False):
                     if regex.search(t, release.source, regex.I):
                         release.cached = s
             for service in services.get():
-                if service.short in release.cached:
+                if service.short in release.cached + release.maybe_cached:
                     if service.download(element, stream=stream, query=query, force=force):
                         downloaded = True
                         downloaded_files += element.Releases[0].files
@@ -47,7 +47,7 @@ def download(element, stream=True, query='', force=False):
                         release.cached = s
             for service in services.get():
                 if len(release.cached) > 0:
-                    if service.short in release.cached:
+                    if service.short in release.cached + release.maybe_cached:
                         if service.download(element, stream=stream, query=query, force=force):
                             downloaded = True
                             downloaded_files += element.Releases[0].files

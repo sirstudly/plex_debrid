@@ -1538,7 +1538,7 @@ class media:
                 ver_dld = False
                 for release in copy.deepcopy(self.Releases):
                     self.Releases = [release,]
-                    if hasattr(release, "cached") and len(release.cached) > 0:
+                    if (hasattr(release, "cached") and len(release.cached) > 0) or (hasattr(release, "maybe_cached") and len(release.maybe_cached) > 0):
                         if debrid.download(self, stream=True, force=force):
                             self.downloaded()
                             downloaded += [True]
@@ -1597,16 +1597,16 @@ class media:
     def season_pack(self, releases):
         season_releases = -1
         episode_releases = [-2] * len(self.Episodes)
-        for release in self.Releases:
-            if len(release.cached) > 0 and int(release.resolution) > season_releases:
+        for release in self.Releases:  # find the highest resolution of all the cached releases
+            if len(release.cached) + len(release.maybe_cached) > 0 and int(release.resolution) > season_releases:
                 season_releases = int(release.resolution)
-        for i, episode in enumerate(self.Episodes):
+        for i, episode in enumerate(self.Episodes):  # find the highest resolution for each episode
             ep_match = regex.compile(episode.deviation(), regex.IGNORECASE)
             for release in releases:
-                if len(release.cached) > 0 and int(release.resolution) >= season_releases and int(release.resolution) > episode_releases[i] and ep_match.match(release.title):
+                if len(release.cached) + len(release.maybe_cached) > 0 and int(release.resolution) >= season_releases and int(release.resolution) > episode_releases[i] and ep_match.match(release.title):
                     episode_releases[i] = int(release.resolution)
         lowest = 2160
-        for quality in episode_releases:
+        for quality in episode_releases:  # find the lowest resolution of all the episodes
             if quality < lowest:
                 lowest = quality
         # If no cached episode release available for all episodes, or the quality is equal or lower to the cached season packs return True

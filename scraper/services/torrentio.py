@@ -2,7 +2,7 @@
 from base import *
 from ui.ui_print import *
 import releases
-# https://github.com/TheBeastLT/torrentio-scraper/blob/master/addon/addon.js
+
 name = "torrentio"
 
 default_opts = "https://torrentio.strem.fun/sort=qualitysize|qualityfilter=480p,scr,cam/manifest.json"
@@ -11,13 +11,19 @@ session = custom_session()
 
 
 def get(url):
+    headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
     try:
-        ui_print("[torrentio] get url: " + url)
-        response = session.get(url, timeout=60)
+        ui_print(f"[torrentio] GET url: {url} ...", ui_settings.debug)
+        response = session.get(url, headers=headers, timeout=60)
+        ui_print("done", ui_settings.debug)
+        if hasattr(response, "status_code") and response.status_code != 200:
+            ui_print(f'[torrentio] error {str(response.status_code)}: failed response from torrentio. {response.content.decode("utf-8")}')
         response = json.loads(
             response.content, object_hook=lambda d: SimpleNamespace(**d))
         return response
-    except:
+    except Exception as e:
+        ui_print('[torrentio] error: ' + str(e))
         return None
 
 
@@ -105,8 +111,8 @@ def scrape(query, altquery):
                     url = "https://v3-cinemeta.strem.io/catalog/movie/top/search=" + query + ".json"
                     meta = get(url)
                 query = meta.metas[0].imdb_id
-            except:
-                ui_print('[torrentio] error: could not find IMDB ID')
+            except Exception as e:
+                ui_print('[torrentio] error: could not find IMDB ID. ' + str(e))
                 return scraped_releases
     if type == "movie":
         url = 'https://torrentio.strem.fun/' + opts + \
@@ -121,8 +127,8 @@ def scrape(query, altquery):
                     url = "https://v3-cinemeta.strem.io/catalog/series/top/search=" + plain_text + ".json"
                     meta = get(url)
                     query = meta.metas[0].imdb_id
-                except:
-                    ui_print('[torrentio] error: could not find IMDB ID')
+                except Exception as e:
+                    ui_print('[torrentio] error: could not find IMDB ID. ' + str(e))
                     return scraped_releases
     if type == "show":
         url = 'https://torrentio.strem.fun/' + opts + \
@@ -133,13 +139,14 @@ def scrape(query, altquery):
         try:
             if not response == None:
                 ui_print('[torrentio] error: ' + str(response))
-        except:
-            ui_print('[torrentio] error: unknown error')
+        except Exception as e:
+            ui_print('[torrentio] error: unknown error. ' + str(e))
         return scraped_releases
     elif len(response.streams) == 1 and not hasattr(response.streams[0], "infoHash"):
         ui_print('[torrentio] error: "' + response.streams[0].name.replace('\n',
                  ' ') + '" - ' + response.streams[0].title.replace('\n', ' '))
         return scraped_releases
+    ui_print(f"[torrentio] found {str(len(response.streams))} streams", ui_settings.debug)
     for result in response.streams:
         try:
             title = result.title.split('\n')[0].replace(' ', '.')

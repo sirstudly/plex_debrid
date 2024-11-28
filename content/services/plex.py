@@ -304,7 +304,7 @@ class movie(classes.media):
 
 class library(classes.library):
     name = 'Plex Library'
-    url = 'http://localhost:32400'
+    url = 'http://plex:32400'
     check = []
 
     def setup(cls, new=False):

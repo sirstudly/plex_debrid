@@ -6,6 +6,12 @@ import releases
 # (required) Name of the Debrid service
 name = "Real Debrid"
 short = "RD"
+media_file_extensions = [
+    '.yuv', '.wmv', '.webm', '.vob', '.viv', '.svi', '.roq', '.rmvb', '.rm',
+    '.ogv', '.ogg', '.nsv', '.mxf', '.mts', '.m2ts', '.ts', '.mpg', '.mpeg',
+    '.m2v', '.mp2', '.mpe', '.mpv', '.mp4', '.m4p', '.m4v', '.mov', '.qt',
+    '.mng', '.mkv', '.flv', '.drc', '.avi', '.asf', '.amv'
+]
 # (required) Authentification of the Debrid service, can be oauth aswell. Create a setting for the required variables in the ui.settings_list. For an oauth example check the trakt authentification.
 api_key = ""
 # Define Variables
@@ -16,6 +22,7 @@ errors = [
     [403," permission denied (infringing torrent or account locked or not premium)"],
     [503," service unavailable (see error message)"],
     [404," wrong parameter (invalid file id(s)) / unknown ressource (invalid id)"],
+    [509," bandwidth limit exceeded"]
     ]
 def setup(cls, new=False):
     from debrid.services import setup
@@ -128,77 +135,87 @@ def download(element, stream=True, query='', force=False):
     if query == '':
         query = element.deviation()
     for release in cached[:]:
-        # if release matches query
-        if regex.match(query, release.title,regex.I) or force:
-            response = post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': release.download[0]})
-            if hasattr(response, 'error') and response.error == 'infringing_file':
-                ui_print( f'[realdebrid]: torrent {release.title} marked as infringing... looking for another release.')
-                continue
-            time.sleep(1.0)
-            torrent_id = str(response.id)
-            response = get('https://api.real-debrid.com/rest/1.0/torrents/info/' + torrent_id)
-            if response.status == 'magnet_error':
-                ui_print( f'[realdebrid]: failed to add torrent {release.title}. Looking for another release.')
-                delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
-                continue
-            if hasattr(response, "files") and len(response.files) > 0:
-                version_files = []
-                for file_ in response.files:
-                    debrid_file = file(file_.id, file_.path, file_.bytes, release.wanted_patterns, release.unwanted_patterns)
-                    version_files.append(debrid_file)
-                release.files = [version(version_files)]
-                cached_ids = [vf.id for vf in version_files if vf.wanted and not vf.unwanted]
-                if len(cached_ids) > 0:
-                    post('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/' + torrent_id, {'files': ",".join(map(str, cached_ids))})
-                    ui_print('[realdebrid] selectFiles response ' + repr(response), ui_settings.debug)
-
+        try:  # if release matches query
+            if regex.match(query, release.title,regex.I) or force:
+                response = post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': release.download[0]})
+                if hasattr(response, 'error') and response.error == 'infringing_file':
+                    ui_print(f'[realdebrid]: torrent {release.title} marked as infringing... looking for another release.')
+                    continue
+                elif hasattr(response, 'error') and response.error == 'too_many_active_downloads':
+                    ui_print(f'[realdebrid]: unable to add torrent {release.title} due to too many active downloads.')
+                    continue
+                elif not hasattr(response, "id"):
+                    ui_print(f'[realdebrid]: unexpected error when adding torrent {release.title}.')
+                    continue
+                time.sleep(1.0)
+                torrent_id = str(response.id)
                 response = get('https://api.real-debrid.com/rest/1.0/torrents/info/' + torrent_id)
-                actual_title = ""
-                if len(response.links) == len(cached_ids) and len(cached_ids) > 0:
-                    actual_title = response.filename
-                    release.download = response.links
-                else:
-                    if response.status in ["queued", "magnet_conversion", "downloading", "uploading"]:
-                        if hasattr(element, "version"):
-                            debrid_uncached = True
-                            for i, rule in enumerate(element.version.rules):
-                                if (rule[0] == "cache status") and (rule[1] == 'requirement' or rule[1] == 'preference') and (rule[2] == "cached"):
-                                    debrid_uncached = False
-                            if debrid_uncached:
-                                import debrid as db
-                                db.downloading += [element.query() + ' [' + element.version.name + ']']
-                                ui_print('[realdebrid] adding uncached release: ' + release.title)
-                                return True
-                            else:
-                                ui_print(f'[realdebrid]: torrent is in {response.status} status (not cached). Looking for another release.')
-                                delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
-                                continue
-                    else:
-                        ui_print( f'[realdebrid] error: torrent is in status [{response.status}] - trying a different file combination.')
-                        delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
-                        continue
-                if response.status == 'downloaded':
-                    ui_print('[realdebrid] adding cached release: ' + release.title)
-                    if actual_title != "":
-                        release.title = actual_title
-                    return True
-
-            else:  # no files found after adding torrent
-                if response.status == 'downloading':
-                    if hasattr(element, "version"):
-                        import debrid as db
-                        db.downloading += [element.query() + ' [' + element.version.name + ']']
-                    ui_print('[realdebrid] adding uncached release: ' + release.title)
-                    return True
-                else:
-                    ui_print(f'[realdebrid]: no files found for torrent {release.title} in status {response.status}. looking for another release.', ui_settings.debug)
+                if response.status == 'magnet_error':
+                    ui_print( f'[realdebrid]: failed to add torrent {release.title}. Looking for another release.')
                     delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
                     continue
+                if hasattr(response, "files") and len(response.files) > 0:
+                    version_files = []
+                    for file_ in response.files:
+                        debrid_file = file(file_.id, file_.path, file_.bytes, release.wanted_patterns, release.unwanted_patterns)
+                        version_files.append(debrid_file)
+                    release.files = [version(version_files)]
+                    cached_ids = [vf.id for vf in version_files if vf.wanted and not vf.unwanted and vf.name.endswith(tuple(media_file_extensions))]
+                    if len(cached_ids) == 0:
+                        ui_print('[realdebrid] no selectable media files.', ui_settings.debug)
+                    else:
+                        post('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/' + torrent_id, {'files': ",".join(map(str, cached_ids))})
+                        ui_print('[realdebrid] selectFiles response ' + repr(response), ui_settings.debug)
 
-            ui_print('[realdebrid] adding uncached release: ' + release.title)
-            return True
-        else:
-            ui_print('[realdebrid] error: rejecting release: "' + release.title + '" because it doesnt match the allowed deviation "' + query + '"', ui_settings.debug)
+                    response = get('https://api.real-debrid.com/rest/1.0/torrents/info/' + torrent_id)
+                    actual_title = ""
+                    if len(response.links) == len(cached_ids) and len(cached_ids) > 0:
+                        actual_title = response.filename
+                        release.download = response.links
+                    else:
+                        if response.status in ["queued", "magnet_conversion", "downloading", "uploading"]:
+                            if hasattr(element, "version"):
+                                debrid_uncached = True
+                                for i, rule in enumerate(element.version.rules):
+                                    if (rule[0] == "cache status") and (rule[1] == 'requirement' or rule[1] == 'preference') and (rule[2] == "cached"):
+                                        debrid_uncached = False
+                                if debrid_uncached:
+                                    import debrid as db
+                                    db.downloading += [element.query() + ' [' + element.version.name + ']']
+                                    ui_print('[realdebrid] added uncached release: ' + release.title)
+                                    return True
+                                else:
+                                    ui_print(f'[realdebrid]: torrent is in {response.status} status (not cached). Looking for another release.')
+                                    delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
+                                    continue
+                        else:
+                            ui_print(f'[realdebrid]: torrent is in status [{response.status}] - trying a different release.')
+                            delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
+                            continue
+                    if response.status == 'downloaded':
+                        ui_print('[realdebrid] added cached release: ' + release.title)
+                        if actual_title != "":
+                            release.title = actual_title
+                        return True
+
+                else:  # no files found after adding torrent
+                    if response.status == 'downloading':
+                        if hasattr(element, "version"):
+                            import debrid as db
+                            db.downloading += [element.query() + ' [' + element.version.name + ']']
+                        ui_print('[realdebrid] added uncached release: ' + release.title)
+                        return True
+                    else:
+                        ui_print(f'[realdebrid]: no files found for torrent {release.title} in status {response.status}. looking for another release.', ui_settings.debug)
+                        delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
+                        continue
+
+                ui_print('[realdebrid] added uncached release: ' + release.title)
+                return True
+            else:
+                ui_print(f'[realdebrid] error: rejecting release: "{release.title}" because it doesnt match the allowed deviation "{query}"', ui_settings.debug)
+        except Exception as e:
+            ui_print(f'[realdebrid] unexpected error: ' + str(e))
     return False
 
 # (required) Check Function
@@ -213,4 +230,4 @@ def check(element, force=False):
     for release in element.Releases[:]:
         release.wanted_patterns = wanted_patterns
         release.unwanted_patterns = unwanted_patterns
-    ui_print("[realdebrid] skipping instant availability check --  endpoint no longer available", ui_settings.debug)
+        release.maybe_cached += ['RD']  # we won't know if it's cached until we attempt to download it

@@ -40,12 +40,12 @@ def setup(self):
     except:
         working_url = False
     while not working_url:
-        if base_url == "http://localhost:5055":
+        if base_url == "http://overseerr:5055":
             print("Looks like overseerr couldn't be reached under the default base url ('" + base_url + "').")
         else:
             print("Looks like overseerr couldn't be reached under the current base url ('" + base_url + "').")
         print("Please make sure overseerr is running and try again, or provide your overseerr base URL below.")
-        print("Please provide your overseerr base URL in the following format 'http://localhost:5055' or press enter to return to the main menu.")
+        print("Please provide your overseerr base URL in the following format 'http://overseerr:5055' or press enter to return to the main menu.")
         print()
         base_url = input("Please provide your overseerr base URL: ")
         if base_url == "":

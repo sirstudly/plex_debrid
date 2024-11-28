@@ -171,7 +171,8 @@ def scrape():
                                         "There was an error adding this uncached torrent to your debrid service. Choose another release?")
                     elif choice == '0':
                         back = True
-                except:
+                except Exception as e:
+                    print("error: " + str(e))
                     back = False
         else:
             print("No releases were found!")
