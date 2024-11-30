@@ -63,18 +63,19 @@ class watchlist(classes.watchlist):
     autoremove = "movie"
 
     def __init__(self) -> None:
-        if len(users) > 0:
-            ui_print('[plex] getting all watchlists ...')
         self.data = []
         try:
             for user in users:
                 added = 0
                 total = 1
+                tic = time.perf_counter()
                 while added < total:
                     total = 0
                     url = 'https://metadata.provider.plex.tv/library/sections/watchlist/all?X-Plex-Container-Size=200&X-Plex-Container-Start=' + str(added) + '&X-Plex-Token=' + user[1]
                     response = get(url)
                     if hasattr(response, 'MediaContainer'):
+                        if added == 0:
+                            ui_print(f'[plex] retrieving metadata for {total} watchlisted items for user {user[0]}')
                         total = response.MediaContainer.totalSize
                         added += response.MediaContainer.size
                         if hasattr(response.MediaContainer, 'Metadata'):
@@ -89,6 +90,8 @@ class watchlist(classes.watchlist):
                                     element = next(x for x in self.data if x == entry)
                                     if not user in element.user:
                                         element.user += [user]
+                toc = time.perf_counter()
+                ui_print('took ' + str(round(toc - tic, 2)) + 's')
             try:
                 self.data.sort(key=lambda s: s.watchlistedAt, reverse=True)
             except:
@@ -97,8 +100,6 @@ class watchlist(classes.watchlist):
             ui_print('done')
             ui_print("[plex error]: (watchlist exception): " + str(e), debug=ui_settings.debug)
             ui_print('[plex error]: could not reach plex')
-        if len(users) > 0:
-            ui_print('done')
 
     def remove(self, item):
         if hasattr(item, 'user'):
