@@ -30,10 +30,10 @@ def logerror(response):
 
 def get(url, timeout=60):
     try:
-        ui_print("[plex] Processing (get): " + url + " ...")
+        ui_print("[plex] Processing (get): " + url + " ...", debug=ui_settings.debug)
         response = session.get(url, headers=headers, timeout=timeout)
         logerror(response)
-        ui_print("done")
+        ui_print("done", debug=ui_settings.debug)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         return response
     except Exception as e:
@@ -42,7 +42,7 @@ def get(url, timeout=60):
 
 def post(url, data):
     try:
-        ui_print("[plex] Processing (post): " + url)
+        ui_print("[plex] Processing (post): " + url, debug=ui_settings.debug)
         response = session.post(url, data=data, headers=headers)
         logerror(response)
         ui_print("[plex] (post) response: " + repr(response), debug=ui_settings.debug)
@@ -179,7 +179,7 @@ class season(classes.media):
         self.__dict__.update(other.__dict__)
         self.EID = setEID(self)
         self.Episodes = []
-        ui_print("[plex] Processing " + self.parentTitle + " " + self.title)
+        ui_print("[plex] Processing " + self.parentTitle + " " + self.title, debug=ui_settings.debug)
         token = users[0][1]
         if library.ignore.name in classes.ignore.active:
             for user in users:
