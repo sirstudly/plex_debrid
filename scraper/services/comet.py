@@ -27,7 +27,10 @@ def request(func, *args):
     try:
         json_response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
-        ui_print('[comet] error: unable to parse response:' + response.content.decode("utf-8") + " " + str(e))
+        if hasattr(response, "content"):
+            ui_print('[comet] error: unable to parse response:' + response.content.decode("utf-8") + " " + str(e))
+        else:
+            ui_print('[comet] error: unable to parse response. ' + str(e))
         return []
     return json_response
 
