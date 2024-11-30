@@ -214,6 +214,7 @@ def download(element, stream=True, query='', force=False):
                 return True
             else:
                 ui_print(f'[realdebrid] error: rejecting release: "{release.title}" because it doesnt match the allowed deviation "{query}"')
+                ui_print(f'[realdebrid] if this was a mistake, you can manually add it: "{release.download[0]}"')
         except Exception as e:
             ui_print(f'[realdebrid] unexpected error: ' + str(e))
     return False
