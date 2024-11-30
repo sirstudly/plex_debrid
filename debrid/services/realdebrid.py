@@ -185,11 +185,11 @@ def download(element, stream=True, query='', force=False):
                                     ui_print('[realdebrid] added uncached release: ' + release.title)
                                     return True
                                 else:
-                                    ui_print(f'[realdebrid]: torrent is in {response.status} status (not cached). Looking for another release.')
+                                    ui_print(f'[realdebrid]: {release.title} is in {response.status} status (not cached). Looking for another release.')
                                     delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
                                     continue
                         else:
-                            ui_print(f'[realdebrid]: torrent is in status [{response.status}] - trying a different release.')
+                            ui_print(f'[realdebrid]: {release.title} is in status [{response.status}] - trying a different release.')
                             delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
                             continue
                     if response.status == 'downloaded':
@@ -206,14 +206,14 @@ def download(element, stream=True, query='', force=False):
                         ui_print('[realdebrid] added uncached release: ' + release.title)
                         return True
                     else:
-                        ui_print(f'[realdebrid]: no files found for torrent {release.title} in status {response.status}. looking for another release.', ui_settings.debug)
+                        ui_print(f'[realdebrid]: no files found for torrent {release.title} in status {response.status}. looking for another release.')
                         delete('https://api.real-debrid.com/rest/1.0/torrents/delete/' + torrent_id)
                         continue
 
                 ui_print('[realdebrid] added uncached release: ' + release.title)
                 return True
             else:
-                ui_print(f'[realdebrid] error: rejecting release: "{release.title}" because it doesnt match the allowed deviation "{query}"', ui_settings.debug)
+                ui_print(f'[realdebrid] error: rejecting release: "{release.title}" because it doesnt match the allowed deviation "{query}"')
         except Exception as e:
             ui_print(f'[realdebrid] unexpected error: ' + str(e))
     return False
