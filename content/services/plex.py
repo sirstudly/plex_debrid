@@ -74,9 +74,9 @@ class watchlist(classes.watchlist):
                     url = 'https://metadata.provider.plex.tv/library/sections/watchlist/all?X-Plex-Container-Size=200&X-Plex-Container-Start=' + str(added) + '&X-Plex-Token=' + user[1]
                     response = get(url)
                     if hasattr(response, 'MediaContainer'):
+                        total = response.MediaContainer.totalSize
                         if added == 0:
                             ui_print(f'[plex] retrieving metadata for {total} watchlisted items for user {user[0]}')
-                        total = response.MediaContainer.totalSize
                         added += response.MediaContainer.size
                         if hasattr(response.MediaContainer, 'Metadata'):
                             for entry in response.MediaContainer.Metadata:
