@@ -66,7 +66,7 @@ def post(url, data):
         ui_print("[realdebrid] (post): " + url + " with data " + repr(data), debug=ui_settings.debug)
         response = session.post(url, headers=headers, data=data)
         logerror(response)
-        ui_print("[realdebrid] response: " + repr(response), debug=ui_settings.debug)
+        ui_print(f"[realdebrid] response: [{response.status_code}]: " + response.content, debug=ui_settings.debug)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
         if hasattr(response,"status_code"):
