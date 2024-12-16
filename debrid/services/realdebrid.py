@@ -134,12 +134,17 @@ class version:
 # (required) Download Function.
 def download(element, stream=True, query='', force=False):
     cached = element.Releases
+    attempted_magnets = []  # list of magnet hashes we've already attempted to download
     if query == '':
         query = element.deviation()
     for release in cached[:]:
         try:  # if release matches query
             if regex.match(query, release.title,regex.I) or force:
+                if release.download[0] in attempted_magnets:
+                    ui_print(f"[realdebrid]: we've already attempted to download {release.title}, skipping release...")
+                    continue
                 response = post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': release.download[0]})
+                attempted_magnets += [release.download[0]]
                 if hasattr(response, 'error') and response.error == 'infringing_file':
                     ui_print(f'[realdebrid]: torrent {release.title} marked as infringing... looking for another release.')
                     continue
