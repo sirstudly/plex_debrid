@@ -47,7 +47,9 @@ def get(url):
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36','authorization': 'Bearer ' + api_key}
     response = None
     try:
+        ui_print("[realdebrid] (get): " + url, debug=ui_settings.debug)
         response = session.get(url, headers=headers)
+        ui_print("[realdebrid] response: " + response.content, debug=ui_settings.debug)
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
@@ -190,6 +192,7 @@ def download(element, stream=True, query='', force=False):
                                     continue
                         else:
                             if response.status in ["waiting_files_selection"]:
+                                ui_print("[realdebrid] in waiting_files_selection")
                                 if hasattr(response, "files") and len(response.files) > 0:
                                     version_files = []
                                     for file_ in response.files:
@@ -197,8 +200,10 @@ def download(element, stream=True, query='', force=False):
                                         version_files.append(debrid_file)
                                     release.files = [version(version_files)]
                                     cached_ids = [vf.id for vf in version_files if vf.wanted and not vf.unwanted and vf.name.endswith(tuple(media_file_extensions))]
+                                    ui_print("[realdebrid] cached_ids=" + repr(cached_ids), ui_settings.debug)
                                     if len(cached_ids) == 0:
                                         ui_print('[realdebrid] no selectable media files.', ui_settings.debug)
+                                        # FIXME: delete(torrent_id)
                                     else:
                                         post('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/' + torrent_id, {'files': ",".join(map(str, cached_ids))})
                                         ui_print(f'[realdebrid]: {release.title} is in status [{response.status}] - tried start download of torrent by selecting files.')
