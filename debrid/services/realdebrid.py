@@ -49,7 +49,7 @@ def get(url):
     try:
         ui_print("[realdebrid] (get): " + url, debug=ui_settings.debug)
         response = session.get(url, headers=headers)
-        ui_print("[realdebrid] response: " + response.content, debug=ui_settings.debug)
+        ui_print(f"[realdebrid] response [{response.status_code}]: " + repr(response.content), debug=ui_settings.debug)
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
@@ -66,7 +66,7 @@ def post(url, data):
         ui_print("[realdebrid] (post): " + url + " with data " + repr(data), debug=ui_settings.debug)
         response = session.post(url, headers=headers, data=data)
         logerror(response)
-        ui_print(f"[realdebrid] response: [{response.status_code}]: " + response.content, debug=ui_settings.debug)
+        ui_print(f"[realdebrid] response [{response.status_code}]: " + repr(response.content), debug=ui_settings.debug)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
         if hasattr(response,"status_code"):
