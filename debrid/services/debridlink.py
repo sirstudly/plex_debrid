@@ -11,6 +11,12 @@ client_id = "0KLCzpbPTCsWZtQ9Ad0aZA"
 # Define Variables
 session = requests.Session()
 
+def headers():
+    return {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Bearer ' + api_key}
+
 def setup(cls, new=False):
     from debrid.services import setup
     setup(cls,new)
@@ -32,12 +38,9 @@ def logerror(response):
 
 # Get Function
 def get(url):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Bearer ' + api_key}
     try:
-        response = session.get(url, headers=headers)
+        ui_print("[debridlink] (get): " + url, debug=ui_settings.debug)
+        response = session.get(url, headers=headers())
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
@@ -47,12 +50,20 @@ def get(url):
 
 # Post Function
 def post(url, data):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Bearer ' + api_key}
     try:
-        response = session.post(url, headers=headers, data=data)
+        ui_print("[debridlink] (post): " + url + " with data " + repr(data), debug=ui_settings.debug)
+        response = session.post(url, headers=headers(), data=data)
+        logerror(response)
+        response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
+    except Exception as e:
+        ui_print("debridlink error: (json exception): " + str(e), debug=ui_settings.debug)
+        response = None
+    return response
+
+def delete(url):
+    try:
+        ui_print("[debridlink] (delete): " + url, debug=ui_settings.debug)
+        response = session.delete(url, headers=headers())
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
@@ -63,7 +74,7 @@ def post(url, data):
 # Oauth Method
 def oauth(code=""):
     if code == "":
-        response = post('https://debrid-link.fr/api/oauth/device/code','client_id=' + client_id)
+        response = post('https://debrid-link.fr/api/oauth/device/code',f'client_id={client_id}&scope=get.post.seedbox%20get.post.delete.seedbox')
         return response.device_code, response.user_code
     else:
         response = None
@@ -82,30 +93,45 @@ def download(element, stream=True, query='', force=False):
     for release in cached[:]:
         # if release matches query
         if regex.match(r'(' + query + ')', release.title,regex.I) or force:
-            if stream:
-                # Cached Download Method for debridlink
-                hashstring = regex.findall(r'(?<=btih:).*?(?=&)', str(release.download[0]), regex.I)[0]
-                url = 'https://debrid-link.fr/api/v2/seedbox/cached?url=' + hashstring
-                response = get(url)
+            debrid_uncached = True
+            for i, rule in enumerate(element.version.rules):
+                if rule[0] == "cache status" and rule[1] in ['requirement', 'preference'] and rule[2] == "cached":
+                    debrid_uncached = False
+                    break
+            if not debrid_uncached:  # Cached Download Method for Debrid-Link
+                torrent_id = None
                 try:
-                    if hasattr(response.value, hashstring.lower()):
-                        url = 'https://debrid-link.fr/api/v2/seedbox/add'
-                        response = post(url, 'url=' + hashstring + '&async=true')
-                        if response.success:
+                    response = add_torrent(release.download[0])
+                    if hasattr(response, "success") and response.success:
+                        if hasattr(response, "value") and hasattr(response.value, "downloadPercent") and response.value.downloadPercent == 100:
                             ui_print('[debridlink] adding cached release: ' + release.title)
                             return True
-                except:
-                    continue
+                    if hasattr(response, "error"):
+                        ui_print(f"[debridlink] {response.error} error adding torrent.")
+                    if hasattr(response, "value") and hasattr(response.value, "id"):
+                        torrent_id = response.value.id
+                    raise Exception(f"{release.title} is not cached.")
+
+                except Exception as e:
+                    ui_print(f"[debridlink] {str(e)} Looking for another release.")
+                    if torrent_id is not None:
+                        response = delete(f"https://debrid-link.fr/api/v2/seedbox/{torrent_id}/remove")
+                        if hasattr(response, "success") and not response.success:
+                            ui_print(f"[debridlink] failed to delete uncached torrent.")
+                            if hasattr(response, "error") and response.error == "access_denied":
+                                ui_print(f"[debridlink] insufficient permissions to delete uncached torrent; try to reset your API key.")
             else:
                 # Uncached Download Method for debridlink
                 try:
-                    url = 'https://debrid-link.fr/api/v2/seedbox/add'
-                    response = post(url, 'url=' + release.download[0] + '&async=true')
-                    if response.success:
-                        ui_print('[debridlink] adding uncached release: ' + release.title)
+                    response = add_torrent(release.download[0])
+                    if hasattr(response, "success") and response.success:
+                        if hasattr(response, "value") and hasattr(response.value, "downloadPercent") and response.value.downloadPercent == 100:
+                            ui_print('[debridlink] adding cached release: ' + release.title)
+                        else:
+                            ui_print('[debridlink] adding uncached release: ' + release.title)
                         return True
-                except:
-                    continue
+                except Exception as e:
+                    ui_print(f"[debridlink] failed to add {release.title}, {str(e)} Looking for another release.")
     return False
     # (required) Check Function
 
@@ -115,20 +141,14 @@ def check(element, force=False):
     else:
         wanted = element.files()
     unwanted = releases.sort.unwanted
-    hashes = []
+    wanted_patterns = list(zip(wanted, [regex.compile(r'(' + key + ')', regex.IGNORECASE) for key in wanted]))
+    unwanted_patterns = list(zip(unwanted, [regex.compile(r'(' + key + ')', regex.IGNORECASE) for key in unwanted]))
     for release in element.Releases[:]:
-        if len(release.hash) == 40:
-            hashes += [release.hash]
-        else:
-            element.Releases.remove(release)
-    if len(hashes) > 0:
-        response = get(
-            'https://debrid-link.fr/api/v2/seedbox/cached?url=' + ','.join(hashes[:200]))
-        for i, release in enumerate(element.Releases):
-            try:
-                if hasattr(response.value, release.hash.lower()):
-                    release.cached += ['DL']
-                    # release.wanted = 0
-                    # release.unwanted = 0
-            except:
-                continue
+        release.wanted_patterns = wanted_patterns
+        release.unwanted_patterns = unwanted_patterns
+        release.maybe_cached += ['DL']  # we won't know if it's cached until we attempt to download it
+
+
+def add_torrent(link: str, isasync: bool = False):
+    return post('https://debrid-link.fr/api/v2/seedbox/add',
+                f'url={requests.utils.quote(link)}&async={str(isasync).lower()}')
