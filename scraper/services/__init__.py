@@ -11,10 +11,11 @@ from scraper.services import zilean
 from scraper.services import torbox
 from scraper.services import mediafusion
 from scraper.services import comet
+from scraper.services import eztv
 
 #define subclass method
 def __subclasses__():
-    return [rarbg,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet]
+    return [rarbg,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet,eztv]
 
 active = ['torrentio']
 overwrite = []

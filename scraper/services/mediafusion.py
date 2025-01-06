@@ -9,6 +9,7 @@ api_password = ""
 request_timeout_sec = "60"
 rate_limit_sec = "10"  # minimum number of seconds between requests
 manifest_json_url = ""
+mediafusion_encrypted_str = ""
 
 
 def request(func, *args):
@@ -148,20 +149,22 @@ def scrape(query, altquery):
         ui_print('[mediafusion] error: search missing IMDB ID for query: ' + query)
         return []
 
-    try:
-        mediafusion_encrypted_str = _get_encrypted_string(session)
-    except Exception as e:
-        ui_print('[mediafusion] error: Failed to compute encrypted string. ' + str(e))
-        return []
+    global mediafusion_encrypted_str
+    if mediafusion_encrypted_str == "":
+        try:
+            mediafusion_encrypted_str = _get_encrypted_string(session)
+        except Exception as e:
+            ui_print('[mediafusion] error: Failed to compute encrypted string. ' + str(e))
+            return []
 
     ui_print(f'[mediafusion]: searching for {type}s with IDs [{str(imdb_ids)}]', ui_settings.debug)
     if type == 'movie':
-        return flatten_list([scrape_imdb_movie(session, mediafusion_encrypted_str, imdb_id, plain_text) for imdb_id in imdb_ids])
-    return flatten_list([scrape_imdb_series(session, mediafusion_encrypted_str, imdb_id, s, e) for imdb_id in imdb_ids])
+        return flatten_list([scrape_imdb_movie(session, imdb_id, plain_text) for imdb_id in imdb_ids])
+    return flatten_list([scrape_imdb_series(session, imdb_id, s, e) for imdb_id in imdb_ids])
 
 
-def scrape_imdb_movie(session: requests.Session, encrypted_str: str, imdb_id: str, query_text: str = None) -> list:
-    url = f'{base_url}/{encrypted_str}/stream/movie/{imdb_id}.json'
+def scrape_imdb_movie(session: requests.Session, imdb_id: str, query_text: str = None) -> list:
+    url = f'{base_url}/{mediafusion_encrypted_str}/stream/movie/{imdb_id}.json'
     response = request(get, session, url)
 
     # fallback to TV series search if we don't get any results
@@ -170,16 +173,16 @@ def scrape_imdb_movie(session: requests.Session, encrypted_str: str, imdb_id: st
             try:
                 url = f"{base_url}/catalog/series/mediafusion_search_series/search={query_text}.json"
                 meta = request(get, session, url)
-                return [scrape_imdb_series(encrypted_str, m.id) for m in meta.metas]
+                return [scrape_imdb_series(session, m.id) for m in meta.metas]
             except Exception as e:
                 ui_print(f'[mediafusion] error: could not find IMDB ID for {query_text}. ' + str(e))
                 return []
     return collate_releases_from_response(response)
 
 
-def scrape_imdb_series(session: requests.Session, encrypted_str: str, imdb_id: str, season: int = 1, episode: int = 1) -> list:
+def scrape_imdb_series(session: requests.Session, imdb_id: str, season: int = 1, episode: int = 1) -> list:
     try:
-        url = f'{base_url}/{encrypted_str}/stream/series/{imdb_id}:{str(season)}:{str(episode)}.json'
+        url = f'{base_url}/{mediafusion_encrypted_str}/stream/series/{imdb_id}:{str(season)}:{str(episode)}.json'
         return collate_releases_from_response(request(get, session, url))
     except Exception as e:
         ui_print('[mediafusion] error: ' + str(e))
@@ -195,7 +198,7 @@ def collate_releases_from_response(response: requests.Response) -> list:
 
     ui_print(f"[mediafusion] found {str(len(response.streams))} streams", ui_settings.debug)
     for result in response.streams:
-        if (hasattr(result, F"url") and "?info_hash=" in result.url) or hasattr(result, "infoHash"):
+        if (hasattr(result, "url") and "?info_hash=" in result.url) or hasattr(result, "infoHash"):
             try:
                 title = result.description.split("\n💾")[0].replace("📂 ", "")
                 info_hash = result.infoHash if hasattr(result, "infoHash") else result.url.split("?info_hash=")[1]
@@ -214,74 +217,98 @@ def collate_releases_from_response(response: requests.Response) -> list:
     return scraped_releases
 
 
+# gets the mediafusion configuration by looking for a defined manifest.json, otherwise generate one using the standard defaults
 def _get_encrypted_string(session: requests.Session) -> str:
 
     if manifest_json_url.endswith("manifest.json"):
         return manifest_json_url.split("/")[-2]
 
+    # apply standard defaults if no configuration exists
     payload = {
         "streaming_provider": None,
-        "selected_catalogs": [
-            "mediafusion_search_movies",
-            "mediafusion_search_series",
-            "prowlarr_streams",
-            "prowlarr_movies",
-            "torrentio_streams",
-            "zilean_dmm_streams",
-            "contribution_streams",
-            "american_football",
-            "arabic_movies",
-            "arabic_series",
-            "baseball",
-            "basketball",
-            "english_hdrip",
-            "english_series",
-            "english_tcrip",
-            "football",
-            "formula_racing",
-            "hindi_dubbed",
-            "hindi_hdrip",
-            "hindi_old",
-            "hindi_series",
-            "hindi_tcrip",
-            "hockey",
-            "kannada_dubbed",
-            "kannada_hdrip",
-            "kannada_old",
-            "kannada_series",
-            "kannada_tcrip",
-            "live_sport_events",
-            "live_tv",
-            "malayalam_dubbed",
-            "malayalam_hdrip",
-            "malayalam_old",
-            "malayalam_series",
-            "malayalam_tcrip",
-            "mediafusion_search_tv",
-            "motogp_racing",
-            "other_sports",
-            "prowlarr_series",
-            "rugby",
-            "tamil_dubbed",
-            "tamil_hdrip",
-            "tamil_old",
-            "tamil_series",
-            "tamil_tcrip",
-            "telugu_dubbed",
-            "telugu_hdrip",
-            "telugu_old",
-            "telugu_series",
-            "telugu_tcrip",
-            "fighting"
-        ],
+        "selected_catalogs": [],
         "selected_resolutions": ["4k","2160p","1440p","1080p","720p","576p","480p","360p","240p",None],
         "enable_catalogs": False,
         "enable_imdb_metadata": True,
+        "max_size": "inf",
         "show_full_torrent_name": True,
         "max_streams_per_resolution": 50,
-        "torrent_sorting_priority": ["cached","resolution","quality","size","seeders","created_at"],
+        "torrent_sorting_priority": [
+            {
+                "key": "language",
+                "direction": "desc"
+            },
+            {
+                "key": "cached",
+                "direction": "desc"
+            },
+            {
+                "key": "resolution",
+                "direction": "desc"
+            },
+            {
+                "key": "quality",
+                "direction": "desc"
+            },
+            {
+                "key": "size",
+                "direction": "desc"
+            },
+            {
+                "key": "seeders",
+                "direction": "desc"
+            },
+            {
+                "key": "created_at",
+                "direction": "desc"
+            }
+        ],
+        "show_language_country_flag": False,
         "nudity_filter": ["Disable"],
-        "certification_filter": ["Disable"]
+        "certification_filter": ["Disable"],
+        "language_sorting": [
+            "English",
+            "Tamil",
+            "Hindi",
+            "Malayalam",
+            "Kannada",
+            "Telugu",
+            "Chinese",
+            "Russian",
+            "Arabic",
+            "Japanese",
+            "Korean",
+            "Taiwanese",
+            "Latino",
+            "French",
+            "Spanish",
+            "Portuguese",
+            "Italian",
+            "German",
+            "Ukrainian",
+            "Polish",
+            "Czech",
+            "Thai",
+            "Indonesian",
+            "Vietnamese",
+            "Dutch",
+            "Bengali",
+            "Turkish",
+            "Greek",
+            "Swedish",
+            None
+        ],
+        "quality_filter": [
+            "BluRay/UHD",
+            "WEB/HD",
+            "DVD/TV/SAT",
+            "CAM/Screener",
+            "Unknown"
+        ],
+        "mediaflow_config": None,
+        "rpdb_config": None,
+        "live_search_streams": False,
+        "contribution_streams": False
     }
 
     if api_password != "":

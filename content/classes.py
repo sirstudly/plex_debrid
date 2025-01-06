@@ -1497,6 +1497,7 @@ class media:
             if not filemode:
                 for season in self.Seasons:
                     season.version = self.version
+                    season.Releases = self.Releases
                     season.downloaded()
         elif self.type == 'season':
             filemode = False

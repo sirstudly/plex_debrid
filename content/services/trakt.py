@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings
 
 # Get Trakt oauth details from env
 class Settings(BaseSettings):
-    client_id: str
-    client_secret: str
+    client_id: str = ""
+    client_secret: str = ""
 
     class Config:
         env_file = ".env"
