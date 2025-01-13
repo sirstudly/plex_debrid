@@ -632,8 +632,6 @@ class media:
     def isanime(self):
         if 'anime' in self.genre():
             if self.type == "show":
-                if hasattr(self, "anime_count"):
-                    return True
                 self.anime_count = 0
                 if hasattr(self, 'Seasons'):
                     for season in self.Seasons:
@@ -1359,7 +1357,7 @@ class media:
                             refresh_ = True
                         if result[1]:
                             retry = True
-                    if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show" or self.hasended()):
+                    if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show"):
                         self.watchlist.remove([], self)
                     toc = time.perf_counter()
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
