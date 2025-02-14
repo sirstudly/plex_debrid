@@ -354,11 +354,16 @@ def run(cdir = "", smode = False):
 
 def update_available():
     try:
-        response = requests.get('https://raw.githubusercontent.com/itsToggle/plex_debrid/main/ui/ui_settings.py',timeout=0.25)
+        response = requests.get('https://raw.githubusercontent.com/elfhosted/plex_debrid/main/ui/ui_settings.py',timeout=0.25)
         response = response.content.decode()
-        if regex.search("(?<=')([0-9]+\.[0-9]+)(?=')",response):
-            v = regex.search("(?<=')([0-9]+\.[0-9]+)(?=')",response).group()
-            if float(ui_settings.version[0]) < float(v):
+        match = regex.search(r"(?<=')([0-9]+\.[0-9]+)(?=')", response)
+        if match:
+            v = match.group()
+            # Split the version strings into major and minor parts.
+            cur_major, cur_minor = map(int, ui_settings.version[0].split('.'))
+            pub_major, pub_minor = map(int, v.split('.'))
+
+            if pub_major > cur_major or (pub_major == cur_major and pub_minor > cur_minor):
                 return " | [v"+v+"] available!"
             return ""
         return ""
