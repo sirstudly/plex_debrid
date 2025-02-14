@@ -1,6 +1,7 @@
 from base import *
 #import child modules
 from scraper.services import rarbg
+from scraper.services import rarbgv2
 from scraper.services import x1337
 from scraper.services import jackett
 from scraper.services import prowlarr
@@ -19,7 +20,7 @@ from scraper.services import limetorrents
 
 #define subclass method
 def __subclasses__():
-    return [rarbg,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet,eztv,thepiratebay,torrentgalaxy,yts,limetorrents]
+    return [rarbg,rarbgv2,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet,eztv,thepiratebay,torrentgalaxy,yts,limetorrents]
 
 active = ['torrentio']
 overwrite = []
