@@ -43,9 +43,9 @@ def scrape(query, altquery):
                         ui_print("[rarbg] Processing torrent: " + title, ui_settings.debug)
                         if regex.match(r'(' + altquery.replace('.', r'\.').replace(r"\.*", ".*") + ')', title, regex.I):
                             link = torrent['href']
-                            request = urllib.request.Request('http://therarbg.com' + link, headers=headers)
+                            request = urllib.request.Request(escape_url('http://therarbg.com' + link), headers=headers)
                             response = session.open(request)
-                            content = response.read().decode('utf-8')
+                            content = response.read().decode('utf-8', errors='ignore')
                             soup = BeautifulSoup(content, 'html.parser')
                             download = soup.select('a[href^="magnet"]')[0]['href']
                             seeders = seederList[count].contents[0]
@@ -80,3 +80,11 @@ def scrape(query, altquery):
             response = None
             ui_print('[rarbg] error: exception: ' + str(e), ui_settings.debug)
     return scraped_releases
+
+
+# properly escapes any non-ascii characters in url
+def escape_url(url):
+    parts = urllib.parse.urlsplit(url)
+    path = urllib.parse.quote(parts.path)
+    query = urllib.parse.quote(parts.query, safe="=&?")  # Adjust safe characters as needed
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, query, parts.fragment))
