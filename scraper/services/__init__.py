@@ -16,10 +16,11 @@ from scraper.services import thepiratebay
 from scraper.services import torrentgalaxy
 from scraper.services import yts
 from scraper.services import limetorrents
+from scraper.services import magnetdl
 
 #define subclass method
 def __subclasses__():
-    return [rarbg,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet,eztv,thepiratebay,torrentgalaxy,yts,limetorrents]
+    return [rarbg,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet,eztv,thepiratebay,torrentgalaxy,yts,limetorrents,magnetdl]
 
 active = ['torrentio']
 overwrite = []
