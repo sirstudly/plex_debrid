@@ -17,6 +17,7 @@ from scraper.services import thepiratebay
 from scraper.services import torrentgalaxy
 from scraper.services import yts
 from scraper.services import magnetdl
+from scraper.services import limetorrents
 
 #define subclass method
 def __subclasses__():
