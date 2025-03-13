@@ -158,13 +158,14 @@ def logerror(response):
 def get(url):
     try:
         response = session.get(url, headers={
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
             "Authorization": "Bearer " + current_user[1]})
         logerror(response)
         header = response.headers
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
-    except:
+    except Exception as e:
+        ui_print("[trakt] error: " + str(e), ui_settings.debug)
         response = None
         header = None
     return response, header
@@ -172,13 +173,14 @@ def get(url):
 def post(url, data):
     try:
         response = session.post(url, headers={
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
             "Authorization": "Bearer " + current_user[1]}, data=data)
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         time.sleep(1.1)
-    except:
+    except Exception as e:
+        ui_print("[trakt] error: " + str(e), ui_settings.debug)
         response = None
     return response
 
@@ -189,7 +191,8 @@ def post2(url, data):
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         time.sleep(1.1)
-    except:
+    except Exception as e:
+        ui_print("[trakt] error: " + str(e), ui_settings.debug)
         response = None
     return response
 

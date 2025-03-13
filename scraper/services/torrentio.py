@@ -6,13 +6,14 @@ import releases
 name = "torrentio"
 
 default_opts = "https://torrentio.strem.fun/sort=qualitysize|qualityfilter=480p,scr,cam/manifest.json"
+base_url = "https://knightcrawler.elfhosted.com/"
 
 session = custom_session()
 
 
 def get(url):
     headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'}
     try:
         ui_print(f"[torrentio] GET url: {url} ...", ui_settings.debug)
         response = session.get(url, headers=headers, timeout=60)
@@ -70,6 +71,9 @@ def scrape(query, altquery):
     scraped_releases = []
     if not 'torrentio' in active:
         return scraped_releases
+    global base_url
+    if not base_url.endswith('/'):
+        base_url += '/'
     if altquery == "(.*)":
         altquery = query
     type = ("show" if regex.search(
@@ -115,7 +119,7 @@ def scrape(query, altquery):
                 ui_print('[torrentio] error: could not find IMDB ID. ' + str(e))
                 return scraped_releases
     if type == "movie":
-        url = 'https://torrentio.strem.fun/' + opts + \
+        url = base_url + opts + \
             ("/" if len(opts) > 0 else "") + 'stream/movie/' + query + '.json'
         response = get(url)
         if not hasattr(response, "streams") or len(response.streams) == 0:
@@ -131,7 +135,7 @@ def scrape(query, altquery):
                     ui_print('[torrentio] error: could not find IMDB ID. ' + str(e))
                     return scraped_releases
     if type == "show":
-        url = 'https://torrentio.strem.fun/' + opts + \
+        url = base_url + opts + \
             ("/" if len(opts) > 0 else "") + 'stream/series/' + \
             query + ':' + str(int(s)) + ':' + str(int(e)) + '.json'
         response = get(url)
