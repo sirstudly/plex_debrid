@@ -157,10 +157,19 @@ def logerror(response):
 
 def get(url):
     try:
+        bearer_token = current_user[1] if isinstance(current_user[1], str) else current_user[1][0]
         response = session.get(url, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
-            "Authorization": "Bearer " + current_user[1]})
+            "Authorization": "Bearer " + bearer_token})
+        if response.status_code == 401:
+            current_user[1] = refresh_token()
+            if current_user[1] is None:
+                return None
+            response = session.get(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+                'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
+                "Authorization": "Bearer " + current_user[1][0]})
         logerror(response)
         header = response.headers
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
@@ -172,10 +181,19 @@ def get(url):
 
 def post(url, data):
     try:
+        bearer_token = current_user[1] if isinstance(current_user[1], str) else current_user[1][0]
         response = session.post(url, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
-            "Authorization": "Bearer " + current_user[1]}, data=data)
+            "Authorization": "Bearer " + bearer_token}, data=data)
+        if response.status_code == 401:
+            current_user[1] = refresh_token()
+            if current_user[1] is None:
+                return None
+            response = session.post(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+                'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
+                "Authorization": "Bearer " + current_user[1][0]}, data=data)
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         time.sleep(1.1)
@@ -210,7 +228,17 @@ def oauth(code=""):
             response = post2('https://api.trakt.tv/oauth/device/token', json.dumps(
                 {'code': code, 'client_id': client_id, 'client_secret': client_secret}))
             time.sleep(1)
-        return response.access_token
+        return response.access_token, response.refresh_token
+
+def refresh_token():
+    ui_print("[trakt] refreshing token for user '" + current_user[0] + "'", debug=ui_settings.debug)
+    response = post2('https://api.trakt.tv/oauth/token', json.dumps(
+                {'refresh_token': current_user[1][1], 'client_id': client_id, 'client_secret': client_secret, 'grant_type': 'refresh_token'}))
+    if response is not None and response.status_code == 200:
+        # TODO: save new access/refresh token
+        ui_print("[trakt] refreshed token: " + json.dumps(response), debug=ui_settings.debug)
+        return response.access_token, response.refresh_token
+    return None
 
 def setEID(self):
     EID = []
