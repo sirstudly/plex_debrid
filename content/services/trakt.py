@@ -248,7 +248,7 @@ def oauth(code=""):
                 {'code': code, 'client_id': client_id, 'client_secret': client_secret}))
             time.sleep(1)
         
-        if response.status_code in [200, 201] and hasattr(response, 'access_token') and hasattr(response, 'refresh_token'):
+        if hasattr(response, 'access_token') and hasattr(response, 'refresh_token'):
             # Calculate actual expiry time from created_at and expires_in
             created_at = getattr(response, 'created_at', int(time.time()))
             expires_in = getattr(response, 'expires_in', 86400)  # Default to 24 hours if not provided
