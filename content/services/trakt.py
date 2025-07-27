@@ -5,6 +5,8 @@ from content import classes
 from ui.ui_print import *
 
 from pydantic_settings import BaseSettings
+import inspect
+import traceback
 
 # Get Trakt oauth details from env
 class Settings(BaseSettings):
@@ -150,55 +152,72 @@ def setup(self, new=False):
 
 def logerror(response):
     if response.status_code not in [200, 201]:
-        ui_print("[trakt] error: " + str(response.content), debug=ui_settings.debug)
+        location = get_error_location()
+        ui_print("[trakt] error: " + str(response.content))
+        ui_print("[trakt] (exception at " + location + ")", debug=ui_settings.debug)
     if response.status_code == 401:
-        ui_print("[trakt] error: (401 unauthorized): trakt api key for user '" + current_user[
-            0] + "' does not seem to work. Consider re-authorizing plex_debrid for this trakt user.")
+        ui_print("[trakt] error: (401 unauthorized): trakt api key for user '" + current_user[0]
+            + "' does not seem to work. Consider re-authorizing plex_debrid for this trakt user.")
+
+def get_error_location():
+    """Get the current file and line number for error reporting"""
+    try:
+        # Get the current frame (the caller of this function)
+        frame = inspect.currentframe().f_back
+        filename = frame.f_code.co_filename
+        line_number = frame.f_lineno
+        return f"{filename}:{line_number}"
+    except:
+        return "unknown location"
 
 def get(url):
     try:
-        bearer_token = current_user[1] if isinstance(current_user[1], str) else current_user[1][0]
+        # Check if token needs refresh before making request
+        if should_refresh_token(current_user[1]):
+            ui_print("[trakt] token expired, refreshing before request.")
+            new_tokens = refresh_token()
+            if new_tokens is None:
+                return None, None
+            current_user[1] = new_tokens
+        
         response = session.get(url, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
-            "Authorization": "Bearer " + bearer_token})
-        if response.status_code == 401:
-            current_user[1] = refresh_token()
-            if current_user[1] is None:
-                return None
-            response = session.get(url, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
-                'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
-                "Authorization": "Bearer " + current_user[1][0]})
+            "Authorization": "Bearer " + current_user[1]['access_token']})
+        
         logerror(response)
         header = response.headers
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
-        ui_print("[trakt] error: " + str(e), ui_settings.debug)
+        location = get_error_location()
+        ui_print("[trakt] error: " + str(e))
+        ui_print("[trakt] (exception at " + location + ")", ui_settings.debug)
         response = None
         header = None
     return response, header
 
 def post(url, data):
     try:
-        bearer_token = current_user[1] if isinstance(current_user[1], str) else current_user[1][0]
+        # Check if token needs refresh before making request
+        if should_refresh_token(current_user[1]):
+            ui_print("[trakt] token expired, refreshing before request.")
+            new_tokens = refresh_token()
+            if new_tokens is None:
+                return None
+            current_user[1] = new_tokens
+        
         response = session.post(url, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
-            "Authorization": "Bearer " + bearer_token}, data=data)
-        if response.status_code == 401:
-            current_user[1] = refresh_token()
-            if current_user[1] is None:
-                return None
-            response = session.post(url, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
-                'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
-                "Authorization": "Bearer " + current_user[1][0]}, data=data)
+            "Authorization": "Bearer " + current_user[1]['access_token']}, data=data)
+        
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         time.sleep(1.1)
     except Exception as e:
-        ui_print("[trakt] error: " + str(e), ui_settings.debug)
+        location = get_error_location()
+        ui_print("[trakt] error: " + str(e))
+        ui_print("[trakt] (exception at " + location + ")", ui_settings.debug)
         response = None
     return response
 
@@ -228,16 +247,98 @@ def oauth(code=""):
             response = post2('https://api.trakt.tv/oauth/device/token', json.dumps(
                 {'code': code, 'client_id': client_id, 'client_secret': client_secret}))
             time.sleep(1)
-        return response.access_token, response.refresh_token
+        
+        if response.status_code in [200, 201] and hasattr(response, 'access_token') and hasattr(response, 'refresh_token'):
+            # Calculate actual expiry time from created_at and expires_in
+            created_at = getattr(response, 'created_at', int(time.time()))
+            expires_in = getattr(response, 'expires_in', 86400)  # Default to 24 hours if not provided
+            expires_at = created_at + expires_in
+            
+            # Return token object with expiry information
+            token_data = {
+                "access_token": response.access_token,
+                "refresh_token": response.refresh_token,
+                "expires_at": expires_at
+            }
+            return token_data
+        else:
+            ui_print(f"[trakt] oauth error: status({response.status_code}) {str(response.content)}")
+            return None
+
+def should_refresh_token(user_tokens):
+    """Check if the token needs to be refreshed based on expiry time."""
+    if isinstance(user_tokens, dict) and 'expires_at' in user_tokens and 'access_token' in user_tokens:
+        current_time = int(time.time())
+        # Refresh 1 hour before expiry
+        refresh_before_expiry = 3600  # 1 hour in seconds
+        return current_time >= (user_tokens['expires_at'] - refresh_before_expiry)
+    ui_print("[trakt] error: Token expiry missing. Please re-authorize plex_debrid for this trakt user.")
+    return True
 
 def refresh_token():
-    ui_print("[trakt] refreshing token for user '" + current_user[0] + "'", debug=ui_settings.debug)
+    ui_print("[trakt] refreshing token for user '" + current_user[0] + "'")
+    
+    # Get refresh token from current user data
+    refresh_token_value = None
+    if isinstance(current_user[1], dict) and 'refresh_token' in current_user[1]:
+        refresh_token_value = current_user[1]['refresh_token']
+    else:
+        ui_print("[trakt] error: invalid token format for refresh.")
+        return None
+    
     response = post2('https://api.trakt.tv/oauth/token', json.dumps(
-                {'refresh_token': current_user[1][1], 'client_id': client_id, 'client_secret': client_secret, 'grant_type': 'refresh_token'}))
-    if response is not None and response.status_code == 200:
-        # TODO: save new access/refresh token
-        ui_print("[trakt] refreshed token: " + json.dumps(response), debug=ui_settings.debug)
-        return response.access_token, response.refresh_token
+                {'refresh_token': refresh_token_value, 'client_id': client_id, 'client_secret': client_secret, 'grant_type': 'refresh_token'}))
+    
+    if response is not None and hasattr(response, 'access_token') and hasattr(response, 'refresh_token'):
+        # Calculate actual expiry time from created_at and expires_in
+        created_at = getattr(response, 'created_at', int(time.time()))
+        expires_in = getattr(response, 'expires_in', 86400)  # Default to 24 hours if not provided
+        expires_at = created_at + expires_in
+        
+        # Create new token object with expiry information
+        new_tokens = {
+            "access_token": response.access_token,
+            "refresh_token": response.refresh_token,
+            "expires_at": expires_at
+        }
+        
+        # Update the current user's tokens in the users list
+        user_found = False
+        for i, user in enumerate(users):
+            if user[0] == current_user[0]:
+                # Update the tokens within the existing list element to preserve references
+                user[1] = new_tokens
+                user_found = True
+                break
+        
+        if not user_found:
+            ui_print("[trakt] error: could not find user '" + current_user[0] + "' in users list", debug=ui_settings.debug)
+            return new_tokens  # Still return the new tokens even if we can't save them
+        
+        # Save settings to file
+        try:
+            # Reload settings and update the tokens
+            with open("settings.json", 'r') as f:
+                settings = json.loads(f.read())
+            
+            # Update the tokens in the settings
+            for i, user in enumerate(settings["Trakt users"]):
+                if user[0] == current_user[0]:
+                    settings["Trakt users"][i][1] = new_tokens
+                    break
+            
+            # Save the updated settings
+            with open("settings.json", 'w') as f:
+                json.dump(settings, f, indent=4)
+            
+            ui_print("[trakt] saved new tokens to settings.json")
+        except Exception as e:
+            location = get_error_location()
+            ui_print("[trakt] error saving tokens to settings: " + str(e))
+            ui_print("[trakt] (exception at " + location + ")", debug=ui_settings.debug)
+        
+        ui_print("[trakt] refreshed token successfully.")
+        return new_tokens
     return None
 
 def setEID(self):
@@ -301,7 +402,9 @@ class watchlist(classes.watchlist):
                             if not element.movie in self.data:
                                 self.data.append(movie(element.movie))
                 except Exception as e:
-                    ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+                    location = get_error_location()
+                    ui_print(f"[trakt] error: {str(e)}")
+                    ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
                     continue
             elif list_type == "collection":
                 try:
@@ -315,7 +418,9 @@ class watchlist(classes.watchlist):
                             if not element.show in self.data:
                                 self.data.append(show(element.show))
                 except Exception as e:
-                    ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+                    location = get_error_location()
+                    ui_print(f"[trakt] error: {str(e)}")
+                    ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
                     continue
             elif list_type == "private":
                 try:
@@ -349,7 +454,9 @@ class watchlist(classes.watchlist):
                                 if not element.movie in self.data:
                                     self.data.append(movie(element.movie))
                 except Exception as e:
-                    ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+                    location = get_error_location()
+                    ui_print(f"[trakt] error: {str(e)}")
+                    ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
                     continue
             else:
                 try:
@@ -376,7 +483,9 @@ class watchlist(classes.watchlist):
                             if not element.movie in self.data:
                                 self.data.append(movie(element.movie))
                 except Exception as e:
-                    ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+                    location = get_error_location()
+                    ui_print(f"[trakt] error: {str(e)}")
+                    ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
                     continue
         ui_print('done')
 
@@ -426,7 +535,9 @@ class watchlist(classes.watchlist):
                                 self.data.append(movie(element.movie))
                             new_watchlist += [element.movie]
                 except Exception as e:
-                    ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+                    location = get_error_location()
+                    ui_print(f"[trakt] error: {str(e)}")
+                    ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
                     continue
             if list_type == "private":
                 try:
@@ -466,7 +577,9 @@ class watchlist(classes.watchlist):
                                     self.data.append(movie(element.movie))
                                 new_watchlist += [element.movie]
                 except Exception as e:
-                    ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+                    location = get_error_location()
+                    ui_print(f"[trakt] error: {str(e)}")
+                    ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
                     continue
         for element in self.data[:]:
             if not element in new_watchlist:
@@ -532,9 +645,11 @@ class watchlist(classes.watchlist):
                                 ui_print('[trakt] item: "' + element.title + '" removed from ' + user[0] + "'s private list: " + p_list.name)
                                 deleted = True
         except Exception as e:
-            ui_print("[trakt error]: (exception): " + str(e), debug=ui_settings.debug)
+            location = get_error_location()
+            ui_print(f"[trakt] error: {str(e)}")
+            ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
         if not deleted:
-            ui_print("[trakt error]: couldnt delete media item from any trakt list.", debug=ui_settings.debug)
+            ui_print("[trakt] error: couldnt delete media item from any trakt list.")
 
 class season(classes.media):
     def __init__(self, other):
@@ -704,7 +819,9 @@ class library(classes.library):
             current_library = collection
             return collection
         except Exception as e:
-            ui_print("[trakt] error: (exception): " + str(e), debug=ui_settings.debug)
+            location = get_error_location()
+            ui_print(f"[trakt] error: {str(e)}")
+            ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
             ui_print("[trakt] error: couldnt get trakt collection. the script will pause all downloads to avoid unwanted behavior.")
             return []
 
@@ -987,7 +1104,9 @@ class library(classes.library):
                 if not self in classes.ignore.ignored:
                     classes.ignore.ignored += [self]
             except Exception as e:
-                ui_print("trakt error: couldnt ignore item: " + str(e), debug=ui_settings.debug)
+                location = get_error_location()
+                ui_print(f"[trakt] error: {str(e)}")
+                ui_print(f"[trakt] error: couldnt ignore item at {location}", debug=ui_settings.debug)
 
         def remove(self):
             global current_user
@@ -1068,7 +1187,9 @@ class library(classes.library):
                 if self in classes.ignore.ignored:
                     classes.ignore.ignored.remove(self)
             except Exception as e:
-                ui_print("trakt error: couldnt un-ignore item: " + str(e), debug=ui_settings.debug)
+                location = get_error_location()
+                ui_print(f"[trakt] error: {str(e)}")
+                ui_print(f"[trakt] error: couldnt un-ignore item at {location}", debug=ui_settings.debug)
 
         def check(self):
             global current_user
@@ -1121,7 +1242,9 @@ class library(classes.library):
                                     return True
                 return False
             except Exception as e:
-                ui_print("[trakt] error: couldnt check ignore status for item: " + str(e), debug=ui_settings.debug)
+                location = get_error_location()
+                ui_print(f"[trakt] error: {str(e)}")
+                ui_print(f"[trakt] error: couldnt check ignore status for item at {location}", debug=ui_settings.debug)
                 return False
     
         def history():
@@ -1163,7 +1286,9 @@ class library(classes.library):
                 library.ignore.watched = history
                 return history
             except Exception as e:
-                ui_print("[trakt] error: couldnt check ignore status for item: " + str(e), debug=ui_settings.debug)
+                location = get_error_location()
+                ui_print(f"[trakt] error: {str(e)}")
+                ui_print(f"[trakt] error: couldnt check ignore status for item at {location}", debug=ui_settings.debug)
                 return None
 
 def aliases(self,lan):
