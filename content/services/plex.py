@@ -61,13 +61,16 @@ def setEID(self):
 
 class watchlist(classes.watchlist):
     autoremove = "movie"
+    _cache = {}  # Class-level cache
 
     def __init__(self) -> None:
         self.data = []
+        self._load_cache()
         try:
             for user in users:
                 added = 0
                 total = 1
+                cache_updated = False
                 tic = time.perf_counter()
                 while added < total:
                     total = 0
@@ -82,14 +85,23 @@ class watchlist(classes.watchlist):
                             for entry in response.MediaContainer.Metadata:
                                 entry.user = [user]
                                 if not entry in self.data:
-                                    if entry.type == 'show':
+                                    cached_item = self._get_cached_item(entry)
+                                    if cached_item:
+                                        self.data += [cached_item]
+                                    elif entry.type == 'show':
                                         self.data += [show(entry)]
-                                    if entry.type == 'movie':
+                                        self._set_cached_item(self.data[-1])
+                                        cache_updated = True
+                                    elif entry.type == 'movie':
                                         self.data += [movie(entry)]
+                                        self._set_cached_item(self.data[-1])
+                                        cache_updated = True
                                 else:
                                     element = next(x for x in self.data if x == entry)
                                     if not user in element.user:
                                         element.user += [user]
+                if cache_updated:
+                    self._save_cache()
                 toc = time.perf_counter()
                 ui_print('took ' + str(round(toc - tic, 2)) + 's')
             try:
@@ -100,6 +112,30 @@ class watchlist(classes.watchlist):
             ui_print('done')
             ui_print("[plex error]: (watchlist exception): " + str(e), debug=ui_settings.debug)
             ui_print('[plex error]: could not reach plex')
+
+    def _load_cache(self):
+        try:
+            cached_data = store.load("plex", "watchlist_cache")
+            self._cache = {item.ratingKey: item for item in cached_data}
+        except:
+            self._cache = {}
+
+    def _save_cache(self):
+        store.save(list(self._cache.values()), "plex", "watchlist_cache")
+
+    def _get_cached_item(self, entry):
+        cache_key = entry.ratingKey
+        if cache_key in self._cache:
+            cached_item = self._cache[cache_key]
+            # Update user list if needed
+            if not entry.user[0] in cached_item.user:
+                cached_item.user.append(entry.user[0])
+            return cached_item
+        return None
+    
+    def _set_cached_item(self, entry):
+        cache_key = entry.ratingKey
+        self._cache[cache_key] = entry
 
     def remove(self, item):
         if hasattr(item, 'user'):
