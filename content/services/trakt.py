@@ -174,7 +174,7 @@ def get(url):
     try:
         # Check if token needs refresh before making request
         if should_refresh_token(current_user[1]):
-            ui_print("[trakt] token expired, refreshing before request.")
+            ui_print("[trakt] token expired or near expiry; refreshing before request.")
             new_tokens = refresh_token()
             if new_tokens is None:
                 return None, None
@@ -275,6 +275,31 @@ def should_refresh_token(user_tokens):
     ui_print("[trakt] error: Token expiry missing. Please re-authorize plex_debrid for this trakt user.")
     return True
 
+def save_trakt_tokens(username, new_tokens):
+    """Save updated Trakt tokens to settings.json file."""
+    try:
+        # Reload settings and update the tokens
+        with open("settings.json", 'r') as f:
+            settings = json.loads(f.read())
+        
+        # Update the tokens in the settings
+        for i, user in enumerate(settings["Trakt users"]):
+            if user[0] == username:
+                settings["Trakt users"][i][1] = new_tokens
+                break
+        
+        # Save the updated settings
+        with open("settings.json", 'w') as f:
+            json.dump(settings, f, indent=4)
+        
+        ui_print("[trakt] saved new tokens to settings.json")
+        return True
+    except Exception as e:
+        location = get_error_location()
+        ui_print("[trakt] error saving tokens to settings: " + str(e))
+        ui_print("[trakt] (exception at " + location + ")", debug=ui_settings.debug)
+        return False
+
 def refresh_token():
     ui_print("[trakt] refreshing token for user '" + current_user[0] + "'")
     
@@ -315,27 +340,8 @@ def refresh_token():
             ui_print("[trakt] error: could not find user '" + current_user[0] + "' in users list", debug=ui_settings.debug)
             return new_tokens  # Still return the new tokens even if we can't save them
         
-        # Save settings to file
-        try:
-            # Reload settings and update the tokens
-            with open("settings.json", 'r') as f:
-                settings = json.loads(f.read())
-            
-            # Update the tokens in the settings
-            for i, user in enumerate(settings["Trakt users"]):
-                if user[0] == current_user[0]:
-                    settings["Trakt users"][i][1] = new_tokens
-                    break
-            
-            # Save the updated settings
-            with open("settings.json", 'w') as f:
-                json.dump(settings, f, indent=4)
-            
-            ui_print("[trakt] saved new tokens to settings.json")
-        except Exception as e:
-            location = get_error_location()
-            ui_print("[trakt] error saving tokens to settings: " + str(e))
-            ui_print("[trakt] (exception at " + location + ")", debug=ui_settings.debug)
+        # Save updated tokens to settings file
+        save_trakt_tokens(current_user[0], new_tokens)
         
         ui_print("[trakt] refreshed token successfully.")
         return new_tokens
