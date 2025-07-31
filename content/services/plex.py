@@ -87,7 +87,17 @@ class watchlist(classes.watchlist):
                                 if not entry in self.data:
                                     cached_item = self._get_cached_item(entry)
                                     if cached_item:
-                                        self.data += [cached_item]
+                                        # For continuing shows, only update cache if older than 24 hours
+                                        if cached_item.type == 'show' and not cached_item.hasended():
+                                            if self._should_update_cache(cached_item):
+                                                self.data += [show(entry)]
+                                                self._set_cached_item(self.data[-1])
+                                                cache_updated = True
+                                            else:
+                                                self.data += [cached_item]
+                                        else:
+                                            # For movies or ended shows, use cached version
+                                            self.data += [cached_item]
                                     elif entry.type == 'show':
                                         self.data += [show(entry)]
                                         self._set_cached_item(self.data[-1])
@@ -101,6 +111,7 @@ class watchlist(classes.watchlist):
                                     if not user in element.user:
                                         element.user += [user]
                 if cache_updated:
+                    ui_print('[plex] saving updated metadata cache', debug=ui_settings.debug)
                     self._save_cache()
                 toc = time.perf_counter()
                 ui_print('took ' + str(round(toc - tic, 2)) + 's')
@@ -117,8 +128,10 @@ class watchlist(classes.watchlist):
         try:
             cached_data = store.load("plex", "watchlist_cache")
             self._cache = {item.ratingKey: item for item in cached_data}
+            ui_print(f'[plex] loaded {len(self._cache)} cached items', debug=ui_settings.debug)
         except:
             self._cache = {}
+            ui_print('[plex] no existing cache found', debug=ui_settings.debug)
 
     def _save_cache(self):
         store.save(list(self._cache.values()), "plex", "watchlist_cache")
@@ -135,7 +148,25 @@ class watchlist(classes.watchlist):
     
     def _set_cached_item(self, entry):
         cache_key = entry.ratingKey
+        # Add timestamp for cache age tracking
+        entry._cache_timestamp = time.time()
         self._cache[cache_key] = entry
+    
+    def _should_update_cache(self, cached_item):
+        """Check if cache entry should be updated based on age and show status"""
+        if not hasattr(cached_item, '_cache_timestamp'):
+            ui_print(f'[plex] updating cache for "{cached_item.title}" - no timestamp found', debug=ui_settings.debug)
+            return True  # No timestamp, update it
+        
+        cache_age_hours = (time.time() - cached_item._cache_timestamp) / 3600
+        should_update = cache_age_hours > 24
+        
+        if should_update:
+            ui_print(f'[plex] updating cache for "{cached_item.title}" - age: {cache_age_hours:.1f}h', debug=ui_settings.debug)
+        else:
+            ui_print(f'[plex] using cached "{cached_item.title}" - age: {cache_age_hours:.1f}h', debug=ui_settings.debug)
+        
+        return should_update
 
     def remove(self, item):
         if hasattr(item, 'user'):
