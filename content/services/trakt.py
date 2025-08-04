@@ -160,13 +160,22 @@ def logerror(response):
             + "' does not seem to work. Consider re-authorizing plex_debrid for this trakt user.")
 
 def get_error_location():
-    """Get the current file and line number for error reporting"""
+    """Get the full stack trace for error reporting"""
     try:
-        # Get the current frame (the caller of this function)
-        frame = inspect.currentframe().f_back
-        filename = frame.f_code.co_filename
-        line_number = frame.f_lineno
-        return f"{filename}:{line_number}"
+        # Get the full stack trace
+        stack = traceback.extract_stack()
+        # Remove the current function from the stack trace
+        stack = stack[:-1]  # Remove the get_error_location call itself
+        
+        # Format the stack trace
+        stack_frames = []
+        for frame_info in stack:
+            filename = frame_info.filename
+            line_number = frame_info.lineno
+            function_name = frame_info.name
+            stack_frames.append(f"{filename}:{line_number} in {function_name}")
+        
+        return " -> ".join(stack_frames)
     except:
         return "unknown location"
 
