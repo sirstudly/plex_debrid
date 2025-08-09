@@ -1,4 +1,5 @@
 from base import *
+from store import sqlite_store
 
 from ui import ui_settings
 
@@ -33,6 +34,11 @@ def logo(path='',update=""):
 def set_log_dir(config):
     global config_dir
     config_dir = config
+    # Initialize sqlite DB in same config directory
+    try:
+        sqlite_store.init_db(db_dir=config_dir)
+    except Exception:
+        pass
 
 def ui_print(string: str, debug="true"):
     global sameline

@@ -1,0 +1,384 @@
+import os
+import sqlite3
+import datetime
+from typing import Optional
+
+_connection: Optional[sqlite3.Connection] = None
+_db_path: Optional[str] = None
+
+
+def _ensure_dir(path: str) -> None:
+    directory = os.path.dirname(path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
+
+def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3") -> str:
+    """Initialize the SQLite database and ensure the media tables exist.
+
+    Args:
+        db_dir: Directory to place the database file. Defaults to './store'.
+        filename: Database filename. Defaults to 'plex_debrid.sqlite3'.
+
+    Returns:
+        The absolute path to the database file.
+    """
+    global _connection, _db_path
+
+    if db_dir is None:
+        db_dir = os.path.join(".", "store")
+
+    db_file = os.path.abspath(os.path.join(db_dir, filename))
+    _ensure_dir(db_file)
+
+    if _connection is None or _db_path != db_file:
+        # Close previous connection if switching DB targets
+        if _connection is not None and _db_path and _db_path != db_file:
+            try:
+                _connection.close()
+            except Exception:
+                pass
+        _connection = sqlite3.connect(db_file, check_same_thread=False)
+        _connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS media_movie (
+                guid TEXT PRIMARY KEY,
+                title TEXT,
+                year INTEGER,
+                imdb TEXT,
+                tmdb TEXT,
+                tvdb TEXT,
+                released INTEGER,
+                collected INTEGER,
+                watched INTEGER,
+                downloading INTEGER,
+                ignored INTEGER,
+                watchlisted_by TEXT,
+                watchlisted_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        _connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS media_show (
+                guid TEXT PRIMARY KEY,
+                leaf_count INTEGER,
+                child_count INTEGER,
+                title TEXT,
+                year INTEGER,
+                public_pages_url TEXT,
+                imdb TEXT,
+                tmdb TEXT,
+                tvdb TEXT,
+                released INTEGER,
+                collected INTEGER,
+                watched INTEGER,
+                ignored INTEGER,
+                watchlisted_by TEXT,
+                watchlisted_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        _connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS media_season (
+                guid TEXT PRIMARY KEY,
+                parent_title TEXT,
+                title TEXT,
+                parent_guid TEXT,
+                year INTEGER,
+                leaf_count INTEGER,
+                idx INTEGER,
+                ignored INTEGER,
+                watchlisted_by TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        _connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS media_episode (
+                guid TEXT PRIMARY KEY,
+                grandparent_title TEXT,
+                parent_title TEXT,
+                title TEXT,
+                parent_index INTEGER,
+                idx INTEGER,
+                year INTEGER,
+                downloading INTEGER,
+                ignored INTEGER,
+                watchlisted_by TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        # No additional indices required currently
+        _connection.commit()
+        _db_path = db_file
+
+    return db_file
+
+
+def _get_connection() -> sqlite3.Connection:
+    global _connection
+    if _connection is None:
+        # Lazy-init with default location if not initialized explicitly
+        init_db()
+    assert _connection is not None
+    return _connection
+
+
+def _convert_watchlisted_at(media_obj) -> Optional[str]:
+    """Convert watchlisted_at from Unix timestamp to ISO8601 format.
+    
+    Args:
+        media_obj: The media object containing watchlistedAt attribute
+        
+    Returns:
+        ISO8601 formatted string or None if no valid timestamp
+    """
+    if hasattr(media_obj, 'watchlistedAt') and media_obj.watchlistedAt is not None:
+        if isinstance(media_obj.watchlistedAt, int) and media_obj.watchlistedAt > 0:
+            return datetime.datetime.fromtimestamp(media_obj.watchlistedAt).isoformat()
+        elif isinstance(media_obj.watchlistedAt, str) and media_obj.watchlistedAt.strip() != "":
+            return media_obj.watchlistedAt
+    return None
+
+
+def update_db(media_obj, library_list) -> None:
+    """Upsert current media status for movies, shows, seasons, and episodes.
+
+    Movies: upsert into media_movie (with imdb/tmdb/tvdb, booleans, ignored).
+    Shows: upsert into media_show (with booleans).
+    Seasons: upsert into media_season.
+    Episodes: upsert into media_episode.
+
+    If guid is missing, we fall back to the first available id among imdb/tmdb/tvdb or a title|year composite.
+    """
+    try:
+        guid = getattr(media_obj, "guid", None)
+        title = getattr(media_obj, "title", None)
+        year = getattr(media_obj, "year", None)
+        media_type = getattr(media_obj, "type", None)
+
+        # Extract watchlisted_by from user attribute
+        watchlisted_by = ""
+        if hasattr(media_obj, "user") and isinstance(media_obj.user, list):
+            # user is a list of lists, where each inner list is [username, token]
+            usernames = []
+            for user_entry in media_obj.user:
+                if isinstance(user_entry, list) and len(user_entry) > 0:
+                    usernames.append(str(user_entry[0]))  # username is first element
+            watchlisted_by = ",".join(usernames)
+
+        # Extract ids for imdb/tmdb/tvdb from any available EID lists
+        eid_list = []
+        if hasattr(media_obj, "EID") and isinstance(media_obj.EID, list):
+            eid_list = media_obj.EID
+        elif hasattr(media_obj, "parentEID") and isinstance(media_obj.parentEID, list):
+            eid_list = media_obj.parentEID
+        elif hasattr(media_obj, "grandparentEID") and isinstance(media_obj.grandparentEID, list):
+            eid_list = media_obj.grandparentEID
+
+        imdb_id = None
+        tmdb_id = None
+        tvdb_id = None
+        for eid in eid_list:
+            try:
+                service, value = str(eid).split('://', 1)
+                if service == 'imdb' and imdb_id is None:
+                    imdb_id = value
+                elif service == 'tmdb' and tmdb_id is None:
+                    tmdb_id = value
+                elif service == 'tvdb' and tvdb_id is None:
+                    tvdb_id = value
+            except Exception:
+                continue
+
+        # Compute booleans using existing helpers
+        released = 1 if callable(getattr(media_obj, "released", None)) and media_obj.released() else 0
+        collected = 1 if callable(getattr(media_obj, "collected", None)) and media_obj.collected(library_list) else 0
+        watched = 1 if callable(getattr(media_obj, "watched", None)) and media_obj.watched() else 0
+        downloading = 1 if callable(getattr(media_obj, "downloading", None)) and media_obj.downloading() else 0
+
+        # Ignored flag: whether the item is currently in the global ignored list
+        try:
+            from content import classes as content_classes
+            ignored = 1 if any(media_obj == x for x in content_classes.ignore.ignored) else 0
+        except Exception:
+            ignored = 0
+
+        # Determine unique key
+        key_guid = None
+        if guid is not None and str(guid).strip() != "":
+            key_guid = str(guid)
+        elif imdb_id or tmdb_id or tvdb_id:
+            # Prefer imdb, then tmdb, then tvdb as unique key if guid is missing
+            key_guid = str(imdb_id or tmdb_id or tvdb_id)
+        elif title:
+            # Last resort: composite of title+year
+            key_guid = f"title:{str(title)}|year:{str(year) if year is not None else ''}"
+
+        if key_guid is None:
+            return
+
+        conn = _get_connection()
+        if media_type == 'movie':
+            conn.execute(
+            """
+            INSERT INTO media_movie (
+                guid, title, year, imdb, tmdb, tvdb, released, collected, watched, downloading, ignored, watchlisted_by, watchlisted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(guid) DO UPDATE SET
+                title=excluded.title,
+                year=excluded.year,
+                imdb=excluded.imdb,
+                tmdb=excluded.tmdb,
+                tvdb=excluded.tvdb,
+                released=excluded.released,
+                collected=excluded.collected,
+                watched=excluded.watched,
+                downloading=excluded.downloading,
+                ignored=excluded.ignored,
+                watchlisted_by=excluded.watchlisted_by,
+                watchlisted_at=excluded.watchlisted_at,
+                updated_at=datetime('now')
+            """,
+                (
+                    key_guid,
+                    None if title is None else str(title),
+                    None if year is None else int(year),
+                    None if imdb_id is None else str(imdb_id),
+                    None if tmdb_id is None else str(tmdb_id),
+                    None if tvdb_id is None else str(tvdb_id),
+                    released,
+                    collected,
+                    watched,
+                    downloading,
+                    ignored,
+                    watchlisted_by,
+                    _convert_watchlisted_at(media_obj),
+                ),
+            )
+        elif media_type == 'show':
+            conn.execute(
+                """
+                INSERT INTO media_show (
+                    guid, leaf_count, child_count, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guid) DO UPDATE SET
+                    leaf_count=excluded.leaf_count,
+                    child_count=excluded.child_count,
+                    title=excluded.title,
+                    year=excluded.year,
+                    watchlisted_at=excluded.watchlisted_at,
+                    public_pages_url=excluded.public_pages_url,
+                    imdb=excluded.imdb,
+                    tmdb=excluded.tmdb,
+                    tvdb=excluded.tvdb,
+                    released=excluded.released,
+                    collected=excluded.collected,
+                    watched=excluded.watched,
+                    ignored=excluded.ignored,
+                    watchlisted_by=excluded.watchlisted_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    key_guid,
+                    getattr(media_obj, 'leafCount', None),
+                    getattr(media_obj, 'childCount', None),
+                    None if title is None else str(title),
+                    None if year is None else int(year),
+                    _convert_watchlisted_at(media_obj),
+                    getattr(media_obj, 'publicPagesURL', None),
+                    None if imdb_id is None else str(imdb_id),
+                    None if tmdb_id is None else str(tmdb_id),
+                    None if tvdb_id is None else str(tvdb_id),
+                    released,
+                    collected,
+                    watched,
+                    ignored,
+                    watchlisted_by,
+                ),
+            )
+        elif media_type == 'season':
+            # Determine season year
+            season_year = getattr(media_obj, 'year', None)
+            if season_year is None:
+                season_year = getattr(media_obj, 'parentYear', None)
+            conn.execute(
+                """
+                INSERT INTO media_season (
+                    guid, parent_title, title, parent_guid, year, leaf_count, idx, ignored, watchlisted_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guid) DO UPDATE SET
+                    parent_title=excluded.parent_title,
+                    title=excluded.title,
+                    parent_guid=excluded.parent_guid,
+                    year=excluded.year,
+                    leaf_count=excluded.leaf_count,
+                    idx=excluded.idx,
+                    ignored=excluded.ignored,
+                    watchlisted_by=excluded.watchlisted_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    key_guid,
+                    getattr(media_obj, 'parentTitle', None),
+                    getattr(media_obj, 'title', None),
+                    getattr(media_obj, 'parentGuid', None),
+                    season_year,
+                    getattr(media_obj, 'leafCount', None),
+                    getattr(media_obj, 'index', None),
+                    ignored,
+                    watchlisted_by,
+                ),
+            )
+        elif media_type == 'episode':
+            # Determine episode year
+            episode_year = getattr(media_obj, 'year', None)
+            if episode_year is None:
+                episode_year = getattr(media_obj, 'grandparentYear', None)
+            downloading_flag = 1 if callable(getattr(media_obj, 'downloading', None)) and media_obj.downloading() else 0
+            conn.execute(
+                """
+                INSERT INTO media_episode (
+                    guid, grandparent_title, parent_title, title, parent_index, idx, year, downloading, ignored, watchlisted_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guid) DO UPDATE SET
+                    grandparent_title=excluded.grandparent_title,
+                    parent_title=excluded.parent_title,
+                    title=excluded.title,
+                    parent_index=excluded.parent_index,
+                    idx=excluded.idx,
+                    year=excluded.year,
+                    downloading=excluded.downloading,
+                    ignored=excluded.ignored,
+                    watchlisted_by=excluded.watchlisted_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    key_guid,
+                    getattr(media_obj, 'grandparentTitle', None),
+                    getattr(media_obj, 'parentTitle', None),
+                    getattr(media_obj, 'title', None),
+                    getattr(media_obj, 'parentIndex', None),
+                    getattr(media_obj, 'index', None),
+                    episode_year,
+                    downloading_flag,
+                    ignored,
+                    watchlisted_by,
+                ),
+            )
+        conn.commit()
+    except Exception as e:
+        # Log via ui_print if available; otherwise ignore
+        try:
+            from ui.ui_print import ui_print, ui_settings
+            ui_print("[sqlite] error: couldnt update database: " + str(e), ui_settings.debug)
+        except Exception:
+            pass
+
+

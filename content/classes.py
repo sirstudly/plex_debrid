@@ -4,6 +4,7 @@ import releases
 import debrid
 import scraper
 from ui.ui_print import *
+from store import sqlite_store
 
 imdb_scraped = False
 
@@ -1187,6 +1188,7 @@ class media:
         self.isanime()
         if self.type == 'movie':
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
+            sqlite_store.update_db(self, library)
             if (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
                 if self.released() and not self.watched() and not self.downloading():
                     if not hasattr(self, "year") or self.year == None:
@@ -1229,6 +1231,7 @@ class media:
                         self.watch()
         elif self.type == 'show':
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
+            sqlite_store.update_db(self, library)
             if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
                 self.isanime()
                 self.Seasons = self.uncollected(library)
@@ -1365,6 +1368,7 @@ class media:
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
         elif self.type == 'season':
             ui_print(f"processing: {self.parentTitle} {self.title}", debug=ui_settings.debug)
+            sqlite_store.update_db(self, library)
             debrid_downloaded = False
             for release in parentReleases:
                 if regex.match(self.deviation(), release.title, regex.I):
@@ -1448,6 +1452,7 @@ class media:
             for release in parentReleases:
                 if regex.match(self.deviation(), release.title, regex.I):
                     self.Releases += [release]
+            sqlite_store.update_db(self, library)
             debrid_downloaded = False
             retry = True
             if len(self.Releases) > 0:
