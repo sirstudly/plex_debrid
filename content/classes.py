@@ -65,8 +65,9 @@ class library:
             indices = []
             for setting in settings:
                 setting.setup()
-                if not cls.name in library.active:
-                    library.active = [cls.name]
+            # Ensure service gets added to active list even if no settings are defined
+            if not cls.name in ignore.active:
+                ignore.active += [cls.name]
 
     def __new__(cls):
         activeservices = []
@@ -156,8 +157,9 @@ class ignore:
             indices = []
             for setting in settings:
                 setting.setup()
-                if not cls.name in ignore.active:
-                    ignore.active += [cls.name]
+            # Ensure service gets added to active list even if no settings are defined
+            if not cls.name in ignore.active:
+                ignore.active += [cls.name]
 
     def __new__(cls):
         activeservices = []
@@ -328,7 +330,7 @@ class media:
                     query = self.EID[0]
                 except:
                     query = "unknown"
-            if not service == "content.services.textfile":
+            if service not in ["content.services.textfile", "content.services.sqlite"]:
                 ui_print("matching item: '"+query+"' of service '" + self.__module__ +
                          "' to service '" + service + "'", ui_settings.debug)
             match = sys.modules[service].match(self)

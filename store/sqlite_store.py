@@ -214,14 +214,12 @@ def update_db(media_obj, library_list) -> None:
         key_guid = None
         if guid is not None and str(guid).strip() != "":
             key_guid = str(guid)
-        elif imdb_id or tmdb_id or tvdb_id:
-            # Prefer imdb, then tmdb, then tvdb as unique key if guid is missing
-            key_guid = str(imdb_id or tmdb_id or tvdb_id)
-        elif title:
-            # Last resort: composite of title+year
-            key_guid = f"title:{str(title)}|year:{str(year) if year is not None else ''}"
-
-        if key_guid is None:
+        elif getattr(media_obj, "ratingKey", None):
+            key_guid = f"plex://{str(media_type)}/{str(media_obj.ratingKey)}"
+        elif getattr(media_obj, "key", None):
+            key_guid = media_obj.key
+        else:
+            print(f"[sqlite] error: couldnt determine key for {media_type}: {title} ({year})")
             return
 
         conn = _get_connection()
@@ -375,10 +373,5 @@ def update_db(media_obj, library_list) -> None:
         conn.commit()
     except Exception as e:
         # Log via ui_print if available; otherwise ignore
-        try:
-            from ui.ui_print import ui_print, ui_settings
-            ui_print("[sqlite] error: couldnt update database: " + str(e), ui_settings.debug)
-        except Exception:
-            pass
-
+        print("[sqlite] error: couldnt update database: " + str(e))
 

@@ -6,6 +6,7 @@ from content.services import trakt
 from content.services import overseerr
 from content.services import textfile
 from content.services import jellyfin
+from content.services import sqlite
 
 #define subclass method
 def __subclasses__():
