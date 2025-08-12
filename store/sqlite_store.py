@@ -91,6 +91,7 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
                 year INTEGER,
                 leaf_count INTEGER,
                 idx INTEGER,
+                collected INTEGER,
                 ignored INTEGER,
                 watchlisted_by TEXT,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -108,6 +109,7 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
                 parent_index INTEGER,
                 idx INTEGER,
                 year INTEGER,
+                collected INTEGER,
                 downloading INTEGER,
                 ignored INTEGER,
                 watchlisted_by TEXT,
@@ -405,8 +407,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_season (
-                    guid, parent_title, title, parent_guid, year, leaf_count, idx, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, parent_title, title, parent_guid, year, leaf_count, idx, collected, ignored, watchlisted_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     parent_title=excluded.parent_title,
                     title=excluded.title,
@@ -414,6 +416,7 @@ def update_db(media_obj, library_list) -> None:
                     year=excluded.year,
                     leaf_count=excluded.leaf_count,
                     idx=excluded.idx,
+                    collected=excluded.collected,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
                     updated_at=datetime('now')
@@ -426,6 +429,7 @@ def update_db(media_obj, library_list) -> None:
                     season_year,
                     getattr(media_obj, 'leafCount', None),
                     getattr(media_obj, 'index', None),
+                    collected,
                     ignored,
                     watchlisted_by,
                 ),
@@ -439,8 +443,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_episode (
-                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, downloading, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, collected, downloading, ignored, watchlisted_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     grandparent_title=excluded.grandparent_title,
                     parent_title=excluded.parent_title,
@@ -449,6 +453,7 @@ def update_db(media_obj, library_list) -> None:
                     parent_index=excluded.parent_index,
                     idx=excluded.idx,
                     year=excluded.year,
+                    collected=excluded.collected,
                     downloading=excluded.downloading,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
@@ -463,6 +468,7 @@ def update_db(media_obj, library_list) -> None:
                     getattr(media_obj, 'parentIndex', None),
                     getattr(media_obj, 'index', None),
                     episode_year,
+                    collected,
                     downloading_flag,
                     ignored,
                     watchlisted_by,
