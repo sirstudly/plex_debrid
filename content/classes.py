@@ -1191,7 +1191,10 @@ class media:
         if self.type == 'movie':
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library)
-            if (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
+            if self.collected(library):
+                ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from watchlist.")
+                self.watchlist.remove([], self)
+            elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
                 if self.released() and not self.watched() and not self.downloading():
                     if not hasattr(self, "year") or self.year == None:
                         ui_print("error: media item has no release year.")
@@ -1225,7 +1228,7 @@ class media:
                         force=False)
                     if debrid_downloaded:
                         refresh_ = True
-                        if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie"):
+                        if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
                             self.watchlist.remove([], self)
                         toc = time.perf_counter()
                         ui_print('took ' + str(round(toc - tic, 2)) + 's')
