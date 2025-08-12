@@ -104,6 +104,7 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
                 grandparent_title TEXT,
                 parent_title TEXT,
                 title TEXT,
+                parent_guid TEXT,
                 parent_index INTEGER,
                 idx INTEGER,
                 year INTEGER,
@@ -343,12 +344,13 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_episode (
-                    guid, grandparent_title, parent_title, title, parent_index, idx, year, downloading, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, downloading, ignored, watchlisted_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     grandparent_title=excluded.grandparent_title,
                     parent_title=excluded.parent_title,
                     title=excluded.title,
+                    parent_guid=excluded.parent_guid,
                     parent_index=excluded.parent_index,
                     idx=excluded.idx,
                     year=excluded.year,
@@ -362,6 +364,7 @@ def update_db(media_obj, library_list) -> None:
                     getattr(media_obj, 'grandparentTitle', None),
                     getattr(media_obj, 'parentTitle', None),
                     getattr(media_obj, 'title', None),
+                    getattr(media_obj, 'parentGuid', None),
                     getattr(media_obj, 'parentIndex', None),
                     getattr(media_obj, 'index', None),
                     episode_year,
