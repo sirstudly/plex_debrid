@@ -1191,7 +1191,10 @@ class media:
         if self.type == 'movie':
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library)
-            if (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
+            if self.collected(library):
+                ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from watchlist.")
+                self.watchlist.remove([], self)
+            elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
                 if self.released() and not self.watched() and not self.downloading():
                     if not hasattr(self, "year") or self.year == None:
                         ui_print("error: media item has no release year.")
@@ -1225,7 +1228,7 @@ class media:
                         force=False)
                     if debrid_downloaded:
                         refresh_ = True
-                        if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie"):
+                        if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
                             self.watchlist.remove([], self)
                         toc = time.perf_counter()
                         ui_print('took ' + str(round(toc - tic, 2)) + 's')
@@ -1546,16 +1549,19 @@ class media:
                     releases.print_releases(self.Releases, True)
                 ver_dld = False
                 for release in copy.deepcopy(self.Releases):
+                    sqlite_store.upsert_release(self, release, downloaded=False)
                     self.Releases = [release,]
                     if (hasattr(release, "cached") and len(release.cached) > 0) or (hasattr(release, "maybe_cached") and len(release.maybe_cached) > 0):
                         if debrid.download(self, stream=True, force=force):
                             self.downloaded()
+                            sqlite_store.mark_release_downloaded(self, release)
                             downloaded += [True]
                             ver_dld = True
                             break
                     elif not self.type == 'show' and debrid_uncached:
                         if debrid.download(self, stream=False, force=force):
                             self.downloaded()
+                            sqlite_store.mark_release_downloaded(self, release)
                             debrid.downloading += [self.query() +
                                                    ' [' + self.version.name + ']']
                             downloaded += [True]
