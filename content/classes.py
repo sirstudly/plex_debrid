@@ -1549,16 +1549,19 @@ class media:
                     releases.print_releases(self.Releases, True)
                 ver_dld = False
                 for release in copy.deepcopy(self.Releases):
+                    sqlite_store.upsert_release(self, release, downloaded=False)
                     self.Releases = [release,]
                     if (hasattr(release, "cached") and len(release.cached) > 0) or (hasattr(release, "maybe_cached") and len(release.maybe_cached) > 0):
                         if debrid.download(self, stream=True, force=force):
                             self.downloaded()
+                            sqlite_store.mark_release_downloaded(self, release)
                             downloaded += [True]
                             ver_dld = True
                             break
                     elif not self.type == 'show' and debrid_uncached:
                         if debrid.download(self, stream=False, force=force):
                             self.downloaded()
+                            sqlite_store.mark_release_downloaded(self, release)
                             debrid.downloading += [self.query() +
                                                    ' [' + self.version.name + ']']
                             downloaded += [True]

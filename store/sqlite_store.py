@@ -115,6 +115,23 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
             )
             """
         )
+        _connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS media_release (
+                guid TEXT NOT NULL,
+                title TEXT,
+                size REAL,
+                link TEXT,
+                hash TEXT,
+                seeders INTEGER,
+                source TEXT,
+                downloaded INTEGER,
+                blacklisted INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (guid, hash)
+            )
+            """
+        )
         # No additional indices required currently
         _connection.commit()
         _db_path = db_file
@@ -146,6 +163,84 @@ def _convert_watchlisted_at(media_obj) -> Optional[str]:
         elif isinstance(media_obj.watchlistedAt, str) and media_obj.watchlistedAt.strip() != "":
             return media_obj.watchlistedAt
     return None
+
+
+def _compute_key_guid(media_obj) -> Optional[str]:
+    """Compute a stable key guid for a media object similar to update_db."""
+    guid = getattr(media_obj, "guid", None)
+    media_type = getattr(media_obj, "type", None)
+    if guid is not None and str(guid).strip() != "":
+        return str(guid)
+    if getattr(media_obj, "ratingKey", None):
+        return f"plex://{str(media_type)}/{str(media_obj.ratingKey)}"
+    if getattr(media_obj, "key", None):
+        return media_obj.key
+    return None
+
+
+def upsert_release(media_obj, release, downloaded: bool = False) -> None:
+    """Upsert a release row for the given media item.
+
+    Args:
+        media_obj: The media object (movie/episode) the release belongs to.
+        release: A release instance from releases.release with attributes.
+        downloaded: Whether this release has been downloaded.
+    """
+    try:
+        conn = _get_connection()
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return
+        title = getattr(release, 'title', None)
+        try:
+            size = float(getattr(release, 'size', 0) or 0)
+        except Exception:
+            size = None
+        link = None
+        dl = getattr(release, 'download', None)
+        if isinstance(dl, list) and len(dl) > 0:
+            link = str(dl[0])
+        hash_value = getattr(release, 'hash', None)
+        try:
+            seeders = int(getattr(release, 'seeders', 0) or 0)
+        except Exception:
+            seeders = None
+        source = getattr(release, 'source', None)
+        downloaded_int = 1 if downloaded else 0
+
+        conn.execute(
+            """
+            INSERT INTO media_release (
+                guid, title, size, link, hash, seeders, source, downloaded
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(guid, hash) DO UPDATE SET
+                title=excluded.title,
+                size=excluded.size,
+                link=excluded.link,
+                seeders=excluded.seeders,
+                source=excluded.source,
+                downloaded=MAX(media_release.downloaded, excluded.downloaded),
+                updated_at=datetime('now')
+            """,
+            (
+                key_guid,
+                None if title is None else str(title),
+                size,
+                None if link is None else str(link),
+                None if hash_value is None else str(hash_value),
+                seeders,
+                None if source is None else str(source),
+                downloaded_int,
+            ),
+        )
+        conn.commit()
+    except Exception as e:
+        print("[sqlite] error: couldnt upsert release: " + str(e))
+
+
+def mark_release_downloaded(media_obj, release) -> None:
+    """Mark an existing or new release as downloaded for a media item."""
+    upsert_release(media_obj, release, downloaded=True)
 
 
 def update_db(media_obj, library_list) -> None:
