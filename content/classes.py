@@ -1228,8 +1228,6 @@ class media:
                         force=False)
                     if debrid_downloaded:
                         refresh_ = True
-                        if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
-                            self.watchlist.remove([], self)
                         toc = time.perf_counter()
                         ui_print('took ' + str(round(toc - tic, 2)) + 's')
                     if retry:
@@ -1237,6 +1235,9 @@ class media:
         elif self.type == 'show':
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library)
+            if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
+                ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from watchlist.")
+                self.watchlist.remove([], self)
             if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
                 self.isanime()
                 self.Seasons = self.uncollected(library)
@@ -1367,7 +1368,8 @@ class media:
                             refresh_ = True
                         if result[1]:
                             retry = True
-                    if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show"):
+                    if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
+                        ui_print(f"show: '{self.title} ({self.year})' is in library. Removing from watchlist.")
                         self.watchlist.remove([], self)
                     toc = time.perf_counter()
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
