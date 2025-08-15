@@ -121,10 +121,10 @@ async def dashboard(request: Request):
                     </div>
                     <div class="col-auto">
                         <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems()">All</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('movie')">Movies</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('show')">Shows</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('episode')">Episodes</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems(null, 1)">All</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('movie', 1)">Movies</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('show', 1)">Shows</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('episode', 1)">Episodes</button>
                         </div>
                     </div>
                 </div>
@@ -194,6 +194,8 @@ async def dashboard(request: Request):
         // Global variables
         let currentTab = 'pending';
         let currentFilter = null;
+        let currentPage = 1;
+        let currentPageSize = 50;
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -210,8 +212,10 @@ async def dashboard(request: Request):
                     } else if (target === '#ignored') {
                         currentTab = 'ignored';
                     }
+                    // Reset to page 1 when switching tabs
+                    currentPage = 1;
                     // Reload current tab with current filter
-                    loadCurrentTabItems(currentFilter);
+                    loadCurrentTabItems(currentFilter, 1);
                 });
             });
         });
@@ -227,15 +231,16 @@ async def dashboard(request: Request):
         }
 
         // Load items for current tab with optional filter
-        async function loadCurrentTabItems(type = null) {
+        async function loadCurrentTabItems(type = null, page = 1) {
             currentFilter = type;
+            currentPage = page;
             
             if (currentTab === 'pending') {
-                await loadPendingItems(type);
+                await loadPendingItems(type, page);
             } else if (currentTab === 'downloading') {
-                await loadDownloadingItems(type);
+                await loadDownloadingItems(type, page);
             } else if (currentTab === 'ignored') {
-                await loadIgnoredItems(type);
+                await loadIgnoredItems(type, page);
             }
         }
 
@@ -255,7 +260,7 @@ async def dashboard(request: Request):
         }
 
         // Load pending items
-        async function loadPendingItems(type = null) {
+        async function loadPendingItems(type = null, page = 1) {
             const loadingEl = document.getElementById('pending-loading');
             const errorEl = document.getElementById('pending-error');
             const contentEl = document.getElementById('pending-content');
@@ -266,16 +271,25 @@ async def dashboard(request: Request):
             
             try {
                 let url = '/api/pending';
+                const params = new URLSearchParams();
                 if (type) {
-                    url = `/api/pending/${type}s`;
+                    params.append('media_type', type);
                 }
+                params.append('page', page);
+                params.append('page_size', currentPageSize);
                 
-                const response = await fetch(url);
+                const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
                 if (data.items && data.items.length > 0) {
                     const table = createItemsTable(data.items, type || 'all');
                     contentEl.appendChild(table);
+                    
+                    // Add pagination controls
+                    if (data.pagination && data.pagination.total_pages > 1) {
+                        const paginationEl = createPaginationControls(data.pagination, type);
+                        contentEl.appendChild(paginationEl);
+                    }
                 } else {
                     contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-inbox fa-3x mb-3"></i><p>No pending items found</p></div>';
                 }
@@ -288,7 +302,7 @@ async def dashboard(request: Request):
         }
 
         // Load downloading items
-        async function loadDownloadingItems(type = null) {
+        async function loadDownloadingItems(type = null, page = 1) {
             const loadingEl = document.getElementById('downloading-loading');
             const errorEl = document.getElementById('downloading-error');
             const contentEl = document.getElementById('downloading-content');
@@ -299,16 +313,25 @@ async def dashboard(request: Request):
             
             try {
                 let url = '/api/downloading';
+                const params = new URLSearchParams();
                 if (type) {
-                    url = `/api/downloading?media_type=${type}`;
+                    params.append('media_type', type);
                 }
+                params.append('page', page);
+                params.append('page_size', currentPageSize);
                 
-                const response = await fetch(url);
+                const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
                 if (data.items && data.items.length > 0) {
                     const table = createItemsTable(data.items, 'downloading');
                     contentEl.appendChild(table);
+                    
+                    // Add pagination controls
+                    if (data.pagination && data.pagination.total_pages > 1) {
+                        const paginationEl = createPaginationControls(data.pagination, type);
+                        contentEl.appendChild(paginationEl);
+                    }
                 } else {
                     contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-download fa-3x mb-3"></i><p>No items currently downloading</p></div>';
                 }
@@ -321,7 +344,7 @@ async def dashboard(request: Request):
         }
 
         // Load ignored items
-        async function loadIgnoredItems(type = null) {
+        async function loadIgnoredItems(type = null, page = 1) {
             const loadingEl = document.getElementById('ignored-loading');
             const errorEl = document.getElementById('ignored-error');
             const contentEl = document.getElementById('ignored-content');
@@ -332,16 +355,25 @@ async def dashboard(request: Request):
             
             try {
                 let url = '/api/ignored';
+                const params = new URLSearchParams();
                 if (type) {
-                    url = `/api/ignored?media_type=${type}`;
+                    params.append('media_type', type);
                 }
+                params.append('page', page);
+                params.append('page_size', currentPageSize);
                 
-                const response = await fetch(url);
+                const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
                 if (data.items && data.items.length > 0) {
                     const table = createItemsTable(data.items, 'ignored');
                     contentEl.appendChild(table);
+                    
+                    // Add pagination controls
+                    if (data.pagination && data.pagination.total_pages > 1) {
+                        const paginationEl = createPaginationControls(data.pagination, type);
+                        contentEl.appendChild(paginationEl);
+                    }
                 } else {
                     contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-ban fa-3x mb-3"></i><p>No ignored items found</p></div>';
                 }
@@ -401,6 +433,47 @@ async def dashboard(request: Request):
             table.appendChild(tbody);
             
             return table;
+        }
+
+        // Create pagination controls
+        function createPaginationControls(pagination, type) {
+            const paginationEl = document.createElement('div');
+            paginationEl.className = 'd-flex justify-content-between align-items-center mt-3';
+            
+            const infoEl = document.createElement('div');
+            infoEl.className = 'text-muted small';
+            infoEl.textContent = `Showing ${((pagination.page - 1) * pagination.page_size) + 1} to ${Math.min(pagination.page * pagination.page_size, pagination.total_count)} of ${pagination.total_count} items`;
+            
+            const controlsEl = document.createElement('div');
+            controlsEl.className = 'btn-group';
+            
+            // Previous button
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'btn btn-outline-secondary btn-sm';
+            prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i> Previous';
+            prevBtn.disabled = !pagination.has_prev;
+            prevBtn.onclick = () => loadCurrentTabItems(type, pagination.page - 1);
+            
+            // Next button
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'btn btn-outline-secondary btn-sm';
+            nextBtn.innerHTML = 'Next <i class="fas fa-chevron-right"></i>';
+            nextBtn.disabled = !pagination.has_next;
+            nextBtn.onclick = () => loadCurrentTabItems(type, pagination.page + 1);
+            
+            // Page info
+            const pageInfo = document.createElement('span');
+            pageInfo.className = 'btn btn-outline-secondary btn-sm disabled';
+            pageInfo.textContent = `Page ${pagination.page} of ${pagination.total_pages}`;
+            
+            controlsEl.appendChild(prevBtn);
+            controlsEl.appendChild(pageInfo);
+            controlsEl.appendChild(nextBtn);
+            
+            paginationEl.appendChild(infoEl);
+            paginationEl.appendChild(controlsEl);
+            
+            return paginationEl;
         }
 
         // Format date

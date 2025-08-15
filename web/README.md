@@ -53,7 +53,8 @@ A web-based dashboard for monitoring pending media items in Plex Debrid.
 
 - `media_type`: Filter by type (movie, show, episode)
 - `source`: Filter by watchlist source (plex, trakt, overseerr)
-- `limit`: Maximum number of items to return (default: 100)
+- `page`: Page number (1-based, default: 1)
+- `page_size`: Items per page (1-200, default: 50)
 
 ### Examples
 
@@ -64,8 +65,11 @@ curl "http://127.0.0.1:8008/api/pending/movies?source=plex"
 # Get statistics
 curl "http://127.0.0.1:8008/api/stats"
 
-# Get first 10 pending items
-curl "http://127.0.0.1:8008/api/pending?limit=10"
+# Get first page of pending items (50 items)
+curl "http://127.0.0.1:8008/api/pending?page=1&page_size=50"
+
+# Get second page of downloading items
+curl "http://127.0.0.1:8008/api/downloading?page=2&page_size=25"
 ```
 
 ## Configuration

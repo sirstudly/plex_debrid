@@ -22,7 +22,8 @@ def get_db_connection():
 async def get_pending_items(
     media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source: plex, trakt, overseerr"),
-    limit: Optional[int] = Query(100, description="Maximum number of items to return")
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get all pending media items"""
     conn = get_db_connection()
@@ -78,8 +79,29 @@ async def get_pending_items(
             else:
                 query += f" WHERE watchlisted_by LIKE '%{source}%'"
         
-        # Add limit
-        query += f" ORDER BY watchlisted_at DESC LIMIT {limit}"
+        # Get total count first
+        if "UNION ALL" in query:
+            # For UNION ALL queries, we need to wrap the entire query in a subquery
+            count_query = f"SELECT COUNT(*) as total FROM ({query}) as subquery"
+        else:
+            # For single table queries, replace the entire SELECT clause
+            # Find the position of FROM and replace everything between SELECT and FROM
+            from_pos = query.find("FROM")
+            if from_pos != -1:
+                count_query = "SELECT COUNT(*) as total " + query[from_pos:]
+            else:
+                # Fallback: just replace SELECT with COUNT
+                count_query = query.replace("SELECT", "SELECT COUNT(*) as total", 1)
+        
+        count_cursor = conn.execute(count_query)
+        total_count = count_cursor.fetchone()[0]
+        
+        # Add pagination
+        offset = (page - 1) * page_size
+        if media_type == "episode":
+            query += f" ORDER BY updated_at DESC LIMIT {page_size} OFFSET {offset}"
+        else:
+            query += f" ORDER BY watchlisted_at DESC LIMIT {page_size} OFFSET {offset}"
         
         cursor = conn.execute(query)
         columns = [description[0] for description in cursor.description]
@@ -90,13 +112,24 @@ async def get_pending_items(
             item = dict(zip(columns, row))
             items.append(item)
         
+        # Calculate pagination info
+        total_pages = (total_count + page_size - 1) // page_size
+        has_next = page < total_pages
+        has_prev = page > 1
+        
         return {
             "items": items,
-            "count": len(items),
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            },
             "filters": {
                 "media_type": media_type,
-                "source": source,
-                "limit": limit
+                "source": source
             }
         }
         
@@ -106,30 +139,35 @@ async def get_pending_items(
 @router.get("/pending/movies")
 async def get_pending_movies(
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
-    limit: Optional[int] = Query(100, description="Maximum number of items to return")
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get pending movies only"""
-    return await get_pending_items(media_type="movie", source=source, limit=limit)
+    return await get_pending_items(media_type="movie", source=source, page=page, page_size=page_size)
 
 @router.get("/pending/shows")
 async def get_pending_shows(
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
-    limit: Optional[int] = Query(100, description="Maximum number of items to return")
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get pending TV shows only"""
-    return await get_pending_items(media_type="show", source=source, limit=limit)
+    return await get_pending_items(media_type="show", source=source, page=page, page_size=page_size)
 
 @router.get("/pending/episodes")
 async def get_pending_episodes(
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
-    limit: Optional[int] = Query(100, description="Maximum number of items to return")
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get pending episodes only"""
-    return await get_pending_items(media_type="episode", source=source, limit=limit)
+    return await get_pending_items(media_type="episode", source=source, page=page, page_size=page_size)
 
 @router.get("/downloading")
 async def get_downloading_items(
-    media_type: Optional[str] = Query(None, description="Filter by media type: movie, episode")
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, episode"),
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get currently downloading items"""
     conn = get_db_connection()
@@ -175,6 +213,27 @@ async def get_downloading_items(
                 ORDER BY updated_at DESC
             """
         
+        # Get total count first
+        if "UNION ALL" in query:
+            # For UNION ALL queries, we need to wrap the entire query in a subquery
+            count_query = f"SELECT COUNT(*) as total FROM ({query}) as subquery"
+        else:
+            # For single table queries, replace the entire SELECT clause
+            # Find the position of FROM and replace everything between SELECT and FROM
+            from_pos = query.find("FROM")
+            if from_pos != -1:
+                count_query = "SELECT COUNT(*) as total " + query[from_pos:]
+            else:
+                # Fallback: just replace SELECT with COUNT
+                count_query = query.replace("SELECT", "SELECT COUNT(*) as total", 1)
+        
+        count_cursor = conn.execute(count_query)
+        total_count = count_cursor.fetchone()[0]
+        
+        # Add pagination
+        offset = (page - 1) * page_size
+        query += f" LIMIT {page_size} OFFSET {offset}"
+        
         cursor = conn.execute(query)
         columns = [description[0] for description in cursor.description]
         rows = cursor.fetchall()
@@ -184,9 +243,21 @@ async def get_downloading_items(
             item = dict(zip(columns, row))
             items.append(item)
         
+        # Calculate pagination info
+        total_pages = (total_count + page_size - 1) // page_size
+        has_next = page < total_pages
+        has_prev = page > 1
+        
         return {
             "items": items,
-            "count": len(items)
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
         }
         
     except Exception as e:
@@ -195,7 +266,8 @@ async def get_downloading_items(
 @router.get("/ignored")
 async def get_ignored_items(
     media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
-    limit: Optional[int] = Query(100, description="Maximum number of items to return")
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get ignored items"""
     conn = get_db_connection()
@@ -206,16 +278,12 @@ async def get_ignored_items(
                 SELECT 'movie' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
                 FROM media_movie 
                 WHERE ignored = 1
-                ORDER BY updated_at DESC
-                LIMIT ?
             """
         elif media_type == "show":
             query = """
                 SELECT 'show' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
                 FROM media_show 
                 WHERE ignored = 1
-                ORDER BY updated_at DESC
-                LIMIT ?
             """
         elif media_type == "episode":
             query = """
@@ -229,8 +297,6 @@ async def get_ignored_items(
                        watchlisted_by, updated_at
                 FROM media_episode 
                 WHERE ignored = 1
-                ORDER BY updated_at DESC
-                LIMIT ?
             """
         else:
             query = """
@@ -252,11 +318,30 @@ async def get_ignored_items(
                        watchlisted_by, updated_at
                 FROM media_episode 
                 WHERE ignored = 1
-                ORDER BY updated_at DESC
-                LIMIT ?
             """
         
-        cursor = conn.execute(query, (limit,))
+        # Get total count first
+        if "UNION ALL" in query:
+            # For UNION ALL queries, we need to wrap the entire query in a subquery
+            count_query = f"SELECT COUNT(*) as total FROM ({query}) as subquery"
+        else:
+            # For single table queries, replace the entire SELECT clause
+            # Find the position of FROM and replace everything between SELECT and FROM
+            from_pos = query.find("FROM")
+            if from_pos != -1:
+                count_query = "SELECT COUNT(*) as total " + query[from_pos:]
+            else:
+                # Fallback: just replace SELECT with COUNT
+                count_query = query.replace("SELECT", "SELECT COUNT(*) as total", 1)
+        
+        count_cursor = conn.execute(count_query)
+        total_count = count_cursor.fetchone()[0]
+        
+        # Add pagination
+        offset = (page - 1) * page_size
+        query += f" LIMIT {page_size} OFFSET {offset}"
+        
+        cursor = conn.execute(query)
         columns = [description[0] for description in cursor.description]
         rows = cursor.fetchall()
         
@@ -265,9 +350,21 @@ async def get_ignored_items(
             item = dict(zip(columns, row))
             items.append(item)
         
+        # Calculate pagination info
+        total_pages = (total_count + page_size - 1) // page_size
+        has_next = page < total_pages
+        has_prev = page > 1
+        
         return {
             "items": items,
-            "count": len(items)
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
         }
         
     except Exception as e:
