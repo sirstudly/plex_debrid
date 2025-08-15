@@ -26,7 +26,7 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
     global _connection, _db_path
 
     if db_dir is None:
-        db_dir = os.path.join(".", "store")
+        db_dir = ""
 
     db_file = os.path.abspath(os.path.join(db_dir, filename))
     _ensure_dir(db_file)
