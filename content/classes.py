@@ -1191,7 +1191,7 @@ class media:
         if self.type == 'movie':
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library)
-            if self.collected(library):
+            if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
                 ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from watchlist.")
                 self.watchlist.remove([], self)
             elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
