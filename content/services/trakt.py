@@ -665,7 +665,7 @@ class watchlist(classes.watchlist):
             ui_print(f"[trakt] error: {str(e)}")
             ui_print(f"[trakt] (exception at {location})", debug=ui_settings.debug)
         if not deleted:
-            ui_print("[trakt] error: couldnt delete media item from any trakt list.")
+            ui_print("[trakt]: media item not found in any trakt list.")
 
 class season(classes.media):
     def __init__(self, other):

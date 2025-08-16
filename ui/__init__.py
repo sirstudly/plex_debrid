@@ -56,6 +56,25 @@ def ignored():
             back = True
     options()
 
+def web_interface():
+    ui_cls('Options/Web Interface/')
+    print('Plex Debrid Web Interface')
+    print('========================')
+    print()
+    print('The web interface provides a dashboard to monitor pending media items.')
+    print()
+    print('To start the web server:')
+    print('1. Run: python web_server.py')
+    print('2. Open your browser to: http://127.0.0.1:8008/dashboard')
+    print()
+    print('Available endpoints:')
+    print('- Dashboard: http://127.0.0.1:8008/dashboard')
+    print('- API Docs: http://127.0.0.1:8008/docs')
+    print('- Health Check: http://127.0.0.1:8008/health')
+    print()
+    print('Press Enter to return to the main menu.')
+    input()
+
 def scrape():
     ui_cls('Options/Scraper/')
     print('Press Enter to return to the main menu.')
@@ -225,6 +244,7 @@ def options():
         option('Settings', current_module, 'settings'),
         option('Ignored Media', current_module, 'ignored'),
         option('Scraper', current_module, 'scrape'),
+        option('Web Interface', current_module, 'web_interface'),
     ]
     ui_cls('Options/',update=update_available())
     for index, option_ in enumerate(list):

@@ -3,3 +3,5 @@ regex==2022.9.13
 requests==2.28.1
 six==1.16.0
 pydantic-settings
+fastapi==0.104.1
+uvicorn[standard]==0.24.0

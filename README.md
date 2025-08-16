@@ -34,6 +34,7 @@ This is a work in progress, and im not a professional programmer. shits not read
  
 ### Features:
 - Compatible with any OS (Mac, Linux, Windows, Android, FreeBSD, ...)
+- **Web Interface**: Monitor pending media items with a modern web dashboard
 - Gathering new content **every 5s** from:
    - <img src="https://app.plex.tv/desktop/favicon.ico" height="16"> **[Plex Watchlists](https://plex.tv/)**
    - <img src="https://walter.trakt.tv/hotlink-ok/public/favicon.ico" height="16"> **[Trakt public lists, watchlists and collections](https://trakt.tv/)**
@@ -99,6 +100,34 @@ If github is not your cup of tea;
 >  - Debrid services like realdebrid block common VPS or Seedbox IP addresses. They do however have a list of whitelisted VPNs, behind which you can run your server. >For realdebrid you can find this list on https://real-debrid.com/vpn . You can also use this address to check wether or not your servers IP is blocked by running the >commands `curl -4 https://real-debrid.com/vpn | grep blocked` and `curl -6 https://real-debrid.com/vpn | grep blocked`. If you have the option, you can try to request >a different IP address from your VPS provider, preferably your own personal IPv4 address which will most likely not be blocked.
 ></details>
 >
+
+### :globe_with_meridians: Web Interface
+
+Plex Debrid includes a modern web dashboard for monitoring pending media items and system status.
+
+><details>
+>  <summary><b><u>Web Interface Setup</u></b></summary>
+>  
+>  **Quick Start:**
+>  
+>  1. Install dependencies: `pip install -r requirements.txt`
+>  2. Start the web server: `python web_server.py`
+>  3. Open your browser to: http://127.0.0.1:8008/dashboard
+>  
+>  **Features:**
+>  - Real-time monitoring of pending, downloading, and ignored media items
+>  - Statistics overview with counts by status and media type
+>  - Filter items by media type (movies, shows, episodes) and source
+>  - RESTful API for programmatic access
+>  - Responsive design for desktop and mobile
+>  
+>  **API Endpoints:**
+>  - Dashboard: http://127.0.0.1:8008/dashboard
+>  - API Documentation: http://127.0.0.1:8008/docs
+>  - Health Check: http://127.0.0.1:8008/health
+>  
+>  For detailed documentation, see [web/README.md](web/README.md)
+></details>
 
  
 ### 1) :open_file_folder: Mount your debrid services:
