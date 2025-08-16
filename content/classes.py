@@ -1200,7 +1200,7 @@ class media:
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library)
             if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
-                ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from watchlist.")
+                ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
                 self.watchlist.remove([], self)
             elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
                 if self.released() and not self.watched() and not self.downloading():
@@ -1244,7 +1244,7 @@ class media:
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library)
             if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
-                ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from watchlist.")
+                ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
                 self.watchlist.remove([], self)
             if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
                 self.isanime()
@@ -1377,7 +1377,7 @@ class media:
                         if result[1]:
                             retry = True
                     if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
-                        ui_print(f"show: '{self.title} ({self.year})' is in library. Removing from watchlist.")
+                        ui_print(f"show: '{self.title} ({self.year})' is in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
                         self.watchlist.remove([], self)
                     toc = time.perf_counter()
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
