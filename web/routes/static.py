@@ -22,6 +22,7 @@ async def dashboard(request: Request):
         }
         .status-card:hover {
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
         .loading {
             display: none;
@@ -34,6 +35,55 @@ async def dashboard(request: Request):
             color: #198754;
             font-weight: bold;
         }
+
+        /* Dark mode styles */
+        .dark-mode {
+            background-color: #1a1a1a !important;
+            color: #e0e0e0 !important;
+        }
+
+        .dark-mode .navbar {
+            background-color: #2d2d2d !important;
+        }
+
+        .dark-mode .card {
+            background-color: #2d2d2d !important;
+            border-color: #404040 !important;
+        }
+
+        .dark-mode .table {
+            color: #e0e0e0 !important;
+        }
+
+        .dark-mode .table-striped > tbody > tr:nth-of-type(odd) > td {
+            background-color: #3a3a3a !important;
+        }
+
+        .dark-mode .nav-tabs .nav-link {
+            color: #e0e0e0 !important;
+        }
+
+        .dark-mode .nav-tabs .nav-link.active {
+            background-color: #404040 !important;
+            border-color: #404040 !important;
+        }
+
+        .dark-mode .form-control,
+        .dark-mode .form-select {
+            background-color: #3a3a3a !important;
+            border-color: #404040 !important;
+            color: #e0e0e0 !important;
+        }
+
+        .dark-mode .btn-outline-secondary {
+            color: #e0e0e0 !important;
+            border-color: #404040 !important;
+        }
+
+        .dark-mode .btn-outline-secondary:hover {
+            background-color: #404040 !important;
+            color: #ffffff !important;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -42,9 +92,17 @@ async def dashboard(request: Request):
             <a class="navbar-brand" href="#">
                 <i class="fas fa-film me-2"></i>Plex Debrid Dashboard
             </a>
-            <button class="btn btn-outline-light" onclick="refreshData()">
-                <i class="fas fa-sync-alt"></i> Refresh
-            </button>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm" onclick="refreshData()" title="Refresh Data (R)">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <button class="btn btn-outline-light btn-sm" onclick="toggleDarkMode()" title="Toggle Dark Mode (Ctrl+D)">
+                    <i class="fas fa-moon" id="dark-mode-icon"></i>
+                </button>
+                <button class="btn btn-outline-light btn-sm" onclick="showKeyboardShortcuts()" title="Keyboard Shortcuts (?)">
+                    <i class="fas fa-keyboard"></i>
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -112,24 +170,140 @@ async def dashboard(request: Request):
             </li>
         </ul>
 
-        <!-- Filter Controls -->
-        <div class="card mt-3">
-            <div class="card-body py-2">
-                <div class="row align-items-center">
-                    <div class="col">
-                        <small class="text-muted">Filter by media type:</small>
-                    </div>
-                    <div class="col-auto">
-                        <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems(null, 1)">All</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('movie', 1)">Movies</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('show', 1)">Shows</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('episode', 1)">Episodes</button>
+                    <!-- Auto-Refresh Controls -->
+            <div class="card mt-3">
+                <div class="card-body py-2">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="auto-refresh-toggle">
+                                <label class="form-check-label" for="auto-refresh-toggle">
+                                    <i class="fas fa-sync-alt"></i> Auto-refresh
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="input-group input-group-sm" style="width: 200px;">
+                                <span class="input-group-text">Every</span>
+                                <select class="form-select" id="refresh-interval">
+                                    <option value="15">15s</option>
+                                    <option value="30" selected>30s</option>
+                                    <option value="60">1m</option>
+                                    <option value="300">5m</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+
+            <!-- Filter Controls -->
+            <div class="card mt-3">
+                <div class="card-body py-2">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <small class="text-muted">Filter by media type:</small>
+                        </div>
+                        <div class="col-auto">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems(null, 1)">All</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('movie', 1)">Movies</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('show', 1)">Shows</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('episode', 1)">Episodes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search and Advanced Filters -->
+            <div class="card mt-3">
+                <div class="card-body py-2">
+                    <div class="row align-items-center">
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">Search:</label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" id="search-input" placeholder="Search titles..." onkeyup="handleSearch(event)">
+                                <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-1">Source:</label>
+                            <select class="form-select form-select-sm" id="source-filter">
+                                <option value="">All Sources</option>
+                                <option value="plex">Plex</option>
+                                <option value="trakt">Trakt</option>
+                                <option value="overseerr">Overseerr</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-1">Year:</label>
+                            <select class="form-select form-select-sm" id="year-filter">
+                                <option value="">All Years</option>
+                                <option value="2024">2024</option>
+                                <option value="2023">2023</option>
+                                <option value="2022">2022</option>
+                                <option value="2021">2021</option>
+                                <option value="2020">2020</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-1">Sort by:</label>
+                            <select class="form-select form-select-sm" id="sort-by">
+                                <option value="watchlisted_at">Watchlisted Date</option>
+                                <option value="title">Title</option>
+                                <option value="year">Year</option>
+                                <option value="updated_at">Updated Date</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-1">Page size:</label>
+                            <select class="form-select form-select-sm" id="page-size" onchange="changePageSize(this.value)">
+                                <option value="25">25 items</option>
+                                <option value="50" selected>50 items</option>
+                                <option value="100">100 items</option>
+                                <option value="200">200 items</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label small mb-1">&nbsp;</label>
+                            <div class="d-grid">
+                                <button class="btn btn-outline-success btn-sm" onclick="exportCurrentData()" title="Export current data">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bulk Actions -->
+            <div class="card mt-3" id="bulk-actions-card" style="display: none;">
+                <div class="card-body py-2">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <span class="text-muted small">
+                                <span id="selected-count">0</span> items selected
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-warning" onclick="bulkIgnore()" title="Ignore selected items">
+                                    <i class="fas fa-ban"></i> Ignore
+                                </button>
+                                <button class="btn btn-outline-info" onclick="bulkDownload()" title="Mark as downloading">
+                                    <i class="fas fa-download"></i> Download
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="clearSelection()" title="Clear selection">
+                                    <i class="fas fa-times"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
         <!-- Tab Content -->
         <div class="tab-content" id="mainTabsContent">
@@ -196,11 +370,18 @@ async def dashboard(request: Request):
         let currentFilter = null;
         let currentPage = 1;
         let currentPageSize = 50;
+        let autoRefreshInterval = null;
+        let autoRefreshEnabled = false;
+        let refreshInterval = 30000; // 30 seconds default
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             refreshData();
-            
+            setupAutoRefresh();
+            setupAdvancedFilters();
+            setupKeyboardShortcuts();
+            loadDarkModePreference();
+
             // Add tab change listeners
             document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
                 tab.addEventListener('shown.bs.tab', function(e) {
@@ -277,6 +458,25 @@ async def dashboard(request: Request):
                 }
                 params.append('page', page);
                 params.append('page_size', currentPageSize);
+                
+                // Add advanced filters
+                const sourceFilter = document.getElementById('source-filter');
+                const yearFilter = document.getElementById('year-filter');
+                const sortBy = document.getElementById('sort-by');
+                const searchInput = document.getElementById('search-input');
+                
+                if (sourceFilter && sourceFilter.value) {
+                    params.append('source', sourceFilter.value);
+                }
+                if (yearFilter && yearFilter.value) {
+                    params.append('year', yearFilter.value);
+                }
+                if (sortBy && sortBy.value) {
+                    params.append('sort_by', sortBy.value);
+                }
+                if (searchInput && searchInput.value.trim()) {
+                    params.append('search', searchInput.value.trim());
+                }
                 
                 const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
@@ -476,6 +676,13 @@ async def dashboard(request: Request):
             return paginationEl;
         }
 
+        // Change page size
+        function changePageSize(newSize) {
+            currentPageSize = parseInt(newSize);
+            currentPage = 1; // Reset to first page
+            loadCurrentTabItems(currentFilter, 1);
+        }
+
         // Format date
         function formatDate(dateString) {
             if (!dateString) return 'N/A';
@@ -485,6 +692,290 @@ async def dashboard(request: Request):
             } catch (error) {
                 return dateString;
             }
+        }
+
+        // Setup auto-refresh functionality
+        function setupAutoRefresh() {
+            const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+            const refreshIntervalInput = document.getElementById('refresh-interval');
+            
+            if (autoRefreshToggle) {
+                autoRefreshToggle.addEventListener('change', function() {
+                    autoRefreshEnabled = this.checked;
+                    if (autoRefreshEnabled) {
+                        startAutoRefresh();
+                    } else {
+                        stopAutoRefresh();
+                    }
+                });
+            }
+            
+            if (refreshIntervalInput) {
+                refreshIntervalInput.addEventListener('change', function() {
+                    refreshInterval = parseInt(this.value) * 1000;
+                    if (autoRefreshEnabled) {
+                        stopAutoRefresh();
+                        startAutoRefresh();
+                    }
+                });
+            }
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            autoRefreshInterval = setInterval(() => {
+                refreshData();
+                loadCurrentTabItems(currentFilter, currentPage);
+            }, refreshInterval);
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // Setup advanced filters
+        function setupAdvancedFilters() {
+            const sourceFilter = document.getElementById('source-filter');
+            const yearFilter = document.getElementById('year-filter');
+            const sortBy = document.getElementById('sort-by');
+            
+            if (sourceFilter) {
+                sourceFilter.addEventListener('change', function() {
+                    loadCurrentTabItems(currentFilter, 1);
+                });
+            }
+            
+            if (yearFilter) {
+                yearFilter.addEventListener('change', function() {
+                    loadCurrentTabItems(currentFilter, 1);
+                });
+            }
+            
+            if (sortBy) {
+                sortBy.addEventListener('change', function() {
+                    loadCurrentTabItems(currentFilter, 1);
+                });
+            }
+        }
+
+        // Search functionality
+        let searchTimeout = null;
+        
+        function handleSearch(event) {
+            const searchTerm = event.target.value.trim();
+            
+            // Clear previous timeout
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+            
+            // Debounce search to avoid too many API calls
+            searchTimeout = setTimeout(() => {
+                loadCurrentTabItems(currentFilter, 1);
+            }, 300);
+        }
+        
+        function clearSearch() {
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+                searchInput.value = '';
+                loadCurrentTabItems(currentFilter, 1);
+            }
+        }
+
+        // Export functionality
+        async function exportCurrentData() {
+            try {
+                // Get current filters
+                const sourceFilter = document.getElementById('source-filter');
+                const yearFilter = document.getElementById('year-filter');
+                const searchInput = document.getElementById('search-input');
+                const sortBy = document.getElementById('sort-by');
+                
+                let url = `/api/${currentTab}`;
+                const params = new URLSearchParams();
+                
+                if (currentFilter) {
+                    params.append('media_type', currentFilter);
+                }
+                params.append('page_size', '1000'); // Get all data for export
+                
+                if (sourceFilter && sourceFilter.value) {
+                    params.append('source', sourceFilter.value);
+                }
+                if (yearFilter && yearFilter.value) {
+                    params.append('year', yearFilter.value);
+                }
+                if (searchInput && searchInput.value.trim()) {
+                    params.append('search', searchInput.value.trim());
+                }
+                if (sortBy && sortBy.value) {
+                    params.append('sort_by', sortBy.value);
+                }
+                
+                const response = await fetch(`${url}?${params}`);
+                const data = await response.json();
+                
+                if (data.items && data.items.length > 0) {
+                    // Create CSV content
+                    const csvContent = createCSVContent(data.items);
+                    
+                    // Create and download file
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url2 = URL.createObjectURL(blob);
+                    link.setAttribute('href', url2);
+                    link.setAttribute('download', `plex_debrid_${currentTab}_${new Date().toISOString().split('T')[0]}.csv`);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    showNotification('Export completed successfully!', 'success');
+                } else {
+                    showNotification('No data to export', 'warning');
+                }
+            } catch (error) {
+                showNotification('Export failed: ' + error.message, 'error');
+            }
+        }
+
+        function createCSVContent(items) {
+            if (!items || items.length === 0) return '';
+            
+            const headers = Object.keys(items[0]);
+            const csvRows = [headers.join(',')];
+            
+            for (const item of items) {
+                const values = headers.map(header => {
+                    const value = item[header] || '';
+                    // Escape quotes and wrap in quotes if contains comma
+                    return '"' + String(value).replace(/"/g, '""') + '"';
+                });
+                csvRows.push(values.join(','));
+            }
+            
+            return csvRows.join('\\n');
+        }
+
+        // Notification system
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-' + (type === 'error' ? 'danger' : type) + ' alert-dismissible fade show position-fixed';
+            notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            notification.innerHTML = 
+                message +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
+        // Dark mode functionality
+        function loadDarkModePreference() {
+            const isDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                updateDarkModeIcon(true);
+            }
+        }
+
+        function toggleDarkMode() {
+            const isDarkMode = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', isDarkMode);
+            updateDarkModeIcon(isDarkMode);
+            showNotification('Dark mode ' + (isDarkMode ? 'enabled' : 'disabled'), 'info');
+        }
+
+        function updateDarkModeIcon(isDarkMode) {
+            const icon = document.getElementById('dark-mode-icon');
+            if (icon) {
+                icon.className = isDarkMode ? 'fas fa-sun' : 'fas fa-moon';
+            }
+        }
+
+        // Keyboard shortcuts
+        function setupKeyboardShortcuts() {
+            document.addEventListener('keydown', function(e) {
+                // Ctrl+D: Toggle dark mode
+                if (e.ctrlKey && e.key === 'd') {
+                    e.preventDefault();
+                    toggleDarkMode();
+                }
+                // R: Refresh data
+                else if (e.key === 'r' && !e.ctrlKey && !e.altKey) {
+                    e.preventDefault();
+                    refreshData();
+                    loadCurrentTabItems(currentFilter, currentPage);
+                }
+                // ?: Show keyboard shortcuts
+                else if (e.key === '?') {
+                    e.preventDefault();
+                    showKeyboardShortcuts();
+                }
+                // 1-3: Switch tabs
+                else if (e.key >= '1' && e.key <= '3') {
+                    e.preventDefault();
+                    const tabIndex = parseInt(e.key) - 1;
+                    const tabs = ['pending', 'downloading', 'ignored'];
+                    if (tabs[tabIndex]) {
+                        document.querySelector(`#${tabs[tabIndex]}-tab`).click();
+                    }
+                }
+            });
+        }
+
+        function showKeyboardShortcuts() {
+            const shortcuts = [
+                { key: 'R', description: 'Refresh data' },
+                { key: 'Ctrl+D', description: 'Toggle dark mode' },
+                { key: '?', description: 'Show this help' },
+                { key: '1-3', description: 'Switch tabs (1=Pending, 2=Downloading, 3=Ignored)' },
+                { key: 'E', description: 'Export current data' }
+            ];
+
+            const shortcutsHtml = shortcuts.map(shortcut => 
+                '<tr><td><kbd>' + shortcut.key + '</kbd></td><td>' + shortcut.description + '</td></tr>'
+            ).join('');
+
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.innerHTML = 
+                '<div class="modal-dialog">' +
+                    '<div class="modal-content">' +
+                        '<div class="modal-header">' +
+                            '<h5 class="modal-title">Keyboard Shortcuts</h5>' +
+                            '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>' +
+                        '</div>' +
+                        '<div class="modal-body">' +
+                            '<table class="table table-sm">' +
+                                '<thead>' +
+                                    '<tr><th>Key</th><th>Action</th></tr>' +
+                                '</thead>' +
+                                '<tbody>' + shortcutsHtml + '</tbody>' +
+                            '</table>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            
+            document.body.appendChild(modal);
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+            
+            modal.addEventListener('hidden.bs.modal', function() {
+                modal.remove();
+            });
         }
     </script>
 </body>

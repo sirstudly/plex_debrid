@@ -22,6 +22,9 @@ def get_db_connection():
 async def get_pending_items(
     media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source: plex, trakt, overseerr"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
@@ -72,12 +75,20 @@ async def get_pending_items(
                 WHERE collected = 0 AND ignored = 0 AND downloading = 0
             """
         
-        # Add source filter if specified
+        # Add filters if specified
+        filters = []
         if source:
+            filters.append(f"watchlisted_by LIKE '%{source}%'")
+        if year:
+            filters.append(f"year = {year}")
+        if search:
+            filters.append(f"title LIKE '%{search}%'")
+        
+        if filters:
             if "WHERE" in query:
-                query += f" AND watchlisted_by LIKE '%{source}%'"
+                query += f" AND {' AND '.join(filters)}"
             else:
-                query += f" WHERE watchlisted_by LIKE '%{source}%'"
+                query += f" WHERE {' AND '.join(filters)}"
         
         # Get total count first
         if "UNION ALL" in query:
@@ -96,13 +107,23 @@ async def get_pending_items(
         count_cursor = conn.execute(count_query)
         total_count = count_cursor.fetchone()[0]
         
-        # Add pagination
+        # Add pagination with sorting
         offset = (page - 1) * page_size
-        if media_type == "episode":
-            query += f" ORDER BY updated_at DESC LIMIT {page_size} OFFSET {offset}"
-        else:
-            query += f" ORDER BY watchlisted_at DESC LIMIT {page_size} OFFSET {offset}"
         
+        # Determine sort column based on media type and sort_by parameter
+        if media_type == "episode":
+            sort_column = "updated_at" if sort_by == "watchlisted_at" else sort_by
+        else:
+            sort_column = sort_by
+        
+        # Validate sort column to prevent SQL injection
+        valid_sort_columns = ["watchlisted_at", "title", "year", "updated_at"]
+        if sort_column not in valid_sort_columns:
+            sort_column = "watchlisted_at"
+        
+        query += f" ORDER BY {sort_column} DESC LIMIT {page_size} OFFSET {offset}"
+
+        print(f"query: {query}")
         cursor = conn.execute(query)
         columns = [description[0] for description in cursor.description]
         rows = cursor.fetchall()
