@@ -199,6 +199,7 @@
                             <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems(null, 1)">All</button>
                             <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('movie', 1)">Movies</button>
                             <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('show', 1)">Shows</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('season', 1)">Seasons</button>
                             <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadCurrentTabItems('episode', 1)">Episodes</button>
                         </div>
                     </div>
@@ -585,6 +586,8 @@
             const firstItem = items[0];
             if (firstItem && firstItem.media_type === 'episode') {
                 headers = ['Type', 'Episode', 'Year', 'Source', 'Added By', 'Status', 'Added'];
+            } else if (firstItem && firstItem.media_type === 'season') {
+                headers = ['Type', 'Season', 'Year', 'Source', 'Added By', 'Status', 'Added'];
             }
             
             const thead = document.createElement('thead');
@@ -614,6 +617,17 @@
                     // Episode row
                     row.innerHTML = `
                         <td><span class="badge bg-primary">Episode</span></td>
+                        <td>${item.title || 'N/A'}</td>
+                        <td>${item.year || 'N/A'}</td>
+                        <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>
+                        <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
+                        <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
+                        <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
+                    `;
+                } else if (item.media_type === 'season') {
+                    // Season row
+                    row.innerHTML = `
+                        <td><span class="badge bg-warning">Season</span></td>
                         <td>${item.title || 'N/A'}</td>
                         <td>${item.year || 'N/A'}</td>
                         <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>

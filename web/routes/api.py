@@ -21,7 +21,7 @@ def get_db_connection():
 @router.get("/media")
 async def get_media_items(
     status: Optional[str] = Query(None, description="Filter by status: pending, downloading, ignored, collected"),
-    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, season, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source: plex, trakt, overseerr"),
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
@@ -111,7 +111,7 @@ async def get_media_items(
 
 @router.get("/pending")
 async def get_pending_items(
-    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, season, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source: plex, trakt, overseerr"),
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
@@ -218,7 +218,7 @@ async def get_downloading_items(
 
 @router.get("/ignored")
 async def get_ignored_items(
-    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, season, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
@@ -240,7 +240,7 @@ async def get_ignored_items(
 
 @router.get("/collected")
 async def get_collected_items(
-    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, season, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
@@ -271,14 +271,17 @@ async def get_statistics() -> Dict[str, Any]:
             SELECT 
                 SUM(CASE WHEN status = 'pending' AND media_type = 'movie' THEN 1 ELSE 0 END) as pending_movies,
                 SUM(CASE WHEN status = 'pending' AND media_type = 'show' THEN 1 ELSE 0 END) as pending_shows,
+                SUM(CASE WHEN status = 'pending' AND media_type = 'season' THEN 1 ELSE 0 END) as pending_seasons,
                 SUM(CASE WHEN status = 'pending' AND media_type = 'episode' THEN 1 ELSE 0 END) as pending_episodes,
                 SUM(CASE WHEN status = 'downloading' AND media_type = 'movie' THEN 1 ELSE 0 END) as downloading_movies,
                 SUM(CASE WHEN status = 'downloading' AND media_type = 'episode' THEN 1 ELSE 0 END) as downloading_episodes,
                 SUM(CASE WHEN status = 'ignored' AND media_type = 'movie' THEN 1 ELSE 0 END) as ignored_movies,
                 SUM(CASE WHEN status = 'ignored' AND media_type = 'show' THEN 1 ELSE 0 END) as ignored_shows,
+                SUM(CASE WHEN status = 'ignored' AND media_type = 'season' THEN 1 ELSE 0 END) as ignored_seasons,
                 SUM(CASE WHEN status = 'ignored' AND media_type = 'episode' THEN 1 ELSE 0 END) as ignored_episodes,
                 SUM(CASE WHEN status = 'collected' AND media_type = 'movie' THEN 1 ELSE 0 END) as collected_movies,
                 SUM(CASE WHEN status = 'collected' AND media_type = 'show' THEN 1 ELSE 0 END) as collected_shows,
+                SUM(CASE WHEN status = 'collected' AND media_type = 'season' THEN 1 ELSE 0 END) as collected_seasons,
                 SUM(CASE WHEN status = 'collected' AND media_type = 'episode' THEN 1 ELSE 0 END) as collected_episodes
             FROM v_media
         """
@@ -291,33 +294,36 @@ async def get_statistics() -> Dict[str, Any]:
                 "pending": {
                     "movies": row[0],
                     "shows": row[1],
-                    "episodes": row[2],
-                    "total": row[0] + row[1] + row[2]
+                    "seasons": row[2],
+                    "episodes": row[3],
+                    "total": row[0] + row[1] + row[2] + row[3]
                 },
                 "downloading": {
-                    "movies": row[3],
-                    "episodes": row[4],
-                    "total": row[3] + row[4]
+                    "movies": row[4],
+                    "episodes": row[5],
+                    "total": row[4] + row[5]
                 },
                 "ignored": {
-                    "movies": row[5],
-                    "shows": row[6],
-                    "episodes": row[7],
-                    "total": row[5] + row[6] + row[7]
+                    "movies": row[6],
+                    "shows": row[7],
+                    "seasons": row[8],
+                    "episodes": row[9],
+                    "total": row[6] + row[7] + row[8] + row[9]
                 },
                 "collected": {
-                    "movies": row[8],
-                    "shows": row[9],
-                    "episodes": row[10],
-                    "total": row[8] + row[9] + row[10]
+                    "movies": row[10],
+                    "shows": row[11],
+                    "seasons": row[12],
+                    "episodes": row[13],
+                    "total": row[10] + row[11] + row[12] + row[13]
                 }
             }
         else:
             stats = {
-                "pending": {"movies": 0, "shows": 0, "episodes": 0, "total": 0},
+                "pending": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
                 "downloading": {"movies": 0, "episodes": 0, "total": 0},
-                "ignored": {"movies": 0, "shows": 0, "episodes": 0, "total": 0},
-                "collected": {"movies": 0, "shows": 0, "episodes": 0, "total": 0}
+                "ignored": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
+                "collected": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0}
             }
         
         return stats

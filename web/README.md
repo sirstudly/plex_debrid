@@ -83,7 +83,7 @@ The web interface uses a unified database setup that automatically creates all n
 Get pending media items with filtering and pagination.
 
 **Parameters**:
-- `media_type` (optional): Filter by type (`movie`, `show`, `episode`)
+- `media_type` (optional): Filter by type (`movie`, `show`, `season`, `episode`)
 - `source` (optional): Filter by media source (`plex`, `trakt`, `overseerr`)
 - `year` (optional): Filter by year (e.g., `2024`)
 - `search` (optional): Search in titles
@@ -117,7 +117,7 @@ Get currently downloading items.
 Get ignored items.
 
 **Parameters**:
-- `media_type` (optional): Filter by type (`movie`, `show`, `episode`)
+- `media_type` (optional): Filter by type (`movie`, `show`, `season`, `episode`)
 - `page` (optional): Page number (default: 1)
 - `page_size` (optional): Items per page (default: 50, max: 200)
 
@@ -130,8 +130,9 @@ Get summary statistics.
   "pending": {
     "movies": 150,
     "shows": 25,
+    "seasons": 50,
     "episodes": 300,
-    "total": 475
+    "total": 525
   },
   "downloading": {
     "movies": 5,
@@ -141,14 +142,16 @@ Get summary statistics.
   "ignored": {
     "movies": 10,
     "shows": 2,
+    "seasons": 5,
     "episodes": 15,
-    "total": 27
+    "total": 32
   },
   "collected": {
     "movies": 1000,
     "shows": 200,
+    "seasons": 100,
     "episodes": 2500,
-    "total": 3700
+    "total": 3800
   }
 }
 ```
@@ -169,7 +172,7 @@ Health check endpoint.
 - Visual indicator when auto-refresh is active
 
 ### Advanced Filtering
-- **Media Type**: Filter by movies, shows, or episodes
+- **Media Type**: Filter by movies, shows, seasons, or episodes
 - **Source**: Filter by media source (Plex, Trakt, Overseerr)
 - **Year**: Filter by release year
 - **Search**: Real-time search across titles

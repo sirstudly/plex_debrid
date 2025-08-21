@@ -154,6 +154,35 @@ FROM media_show
 
 UNION ALL
 
+-- Seasons with status
+SELECT 
+    'season' as media_type,
+    guid,
+    CASE 
+        WHEN parent_title IS NOT NULL AND parent_title != '' 
+        THEN title || ' (' || parent_title || ')'
+        ELSE title 
+    END as title,
+    year,
+    NULL as imdb,
+    NULL as tmdb,
+    NULL as tvdb,
+    watchlisted_by,
+    updated_at as watchlisted_at,
+    source,
+    updated_at,
+    CASE 
+        WHEN collected = 1 THEN 'collected'
+        WHEN ignored = 1 THEN 'ignored'
+        ELSE 'pending'
+    END as status,
+    collected,
+    ignored,
+    0 as downloading
+FROM media_season
+
+UNION ALL
+
 -- Episodes with status
 SELECT 
     'episode' as media_type,
@@ -203,6 +232,12 @@ CREATE INDEX IF NOT EXISTS idx_media_show_watchlisted_by ON media_show(watchlist
 CREATE INDEX IF NOT EXISTS idx_media_show_watchlisted_at ON media_show(watchlisted_at);
 CREATE INDEX IF NOT EXISTS idx_media_show_source ON media_show(source);
 
+CREATE INDEX IF NOT EXISTS idx_media_season_status ON media_season(collected, ignored);
+CREATE INDEX IF NOT EXISTS idx_media_season_year ON media_season(year);
+CREATE INDEX IF NOT EXISTS idx_media_season_watchlisted_by ON media_season(watchlisted_by);
+CREATE INDEX IF NOT EXISTS idx_media_season_updated_at ON media_season(updated_at);
+CREATE INDEX IF NOT EXISTS idx_media_season_source ON media_season(source);
+
 CREATE INDEX IF NOT EXISTS idx_media_episode_status ON media_episode(collected, ignored, downloading);
 CREATE INDEX IF NOT EXISTS idx_media_episode_year ON media_episode(year);
 CREATE INDEX IF NOT EXISTS idx_media_episode_watchlisted_by ON media_episode(watchlisted_by);
@@ -220,6 +255,9 @@ CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 --
 -- Get pending movies only:
 -- SELECT * FROM v_media WHERE status = 'pending' AND media_type = 'movie';
+--
+-- Get pending seasons only:
+-- SELECT * FROM v_media WHERE status = 'pending' AND media_type = 'season';
 --
 -- Get downloading items:
 -- SELECT * FROM v_media WHERE status = 'downloading';
@@ -243,5 +281,6 @@ CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 -- SELECT 
 --     SUM(CASE WHEN status = 'pending' AND media_type = 'movie' THEN 1 ELSE 0 END) as pending_movies,
 --     SUM(CASE WHEN status = 'pending' AND media_type = 'show' THEN 1 ELSE 0 END) as pending_shows,
+--     SUM(CASE WHEN status = 'pending' AND media_type = 'season' THEN 1 ELSE 0 END) as pending_seasons,
 --     SUM(CASE WHEN status = 'pending' AND media_type = 'episode' THEN 1 ELSE 0 END) as pending_episodes
 -- FROM v_media;
