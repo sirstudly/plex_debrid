@@ -354,6 +354,38 @@
         </div>
     </div>
 
+    <!-- Releases Modal -->
+    <div class="modal fade" id="releasesModal" tabindex="-1" aria-labelledby="releasesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl" style="max-width: 95%;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="releasesModalLabel">Releases for <span id="mediaItemTitle"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
+                    <div id="releasesLoading" class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading releases...</p>
+                    </div>
+                    <div id="releasesContent" style="display: none;">
+                        <div id="releasesTableContainer"></div>
+                    </div>
+                    <div id="releasesEmpty" style="display: none;">
+                        <div class="text-center text-muted">
+                            <i class="fas fa-info-circle fa-3x mb-3"></i>
+                            <p>No releases found for this media item.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Global variables
@@ -603,6 +635,9 @@
             const tbody = document.createElement('tbody');
             items.forEach(item => {
                 const row = document.createElement('tr');
+                row.style.cursor = 'pointer';
+                row.onclick = () => showReleases(item.guid, item.title);
+                row.title = 'Click to view releases';
                 
                 // Get status badge color
                 const statusColors = {
@@ -998,6 +1033,219 @@
             modal.addEventListener('hidden.bs.modal', function() {
                 modal.remove();
             });
+        }
+
+        // Releases functionality
+        let currentMediaGuid = null;
+
+        function showReleases(guid, title) {
+            currentMediaGuid = guid;
+            document.getElementById('mediaItemTitle').textContent = title;
+            
+            const modal = new bootstrap.Modal(document.getElementById('releasesModal'));
+            modal.show();
+            
+            loadReleases(guid);
+        }
+
+        async function loadReleases(guid) {
+            const loadingEl = document.getElementById('releasesLoading');
+            const contentEl = document.getElementById('releasesContent');
+            const emptyEl = document.getElementById('releasesEmpty');
+            
+            loadingEl.style.display = 'block';
+            contentEl.style.display = 'none';
+            emptyEl.style.display = 'none';
+            
+            try {
+                const response = await fetch(`/api/releases?guid=${encodeURIComponent(guid)}`);
+                const data = await response.json();
+                
+                loadingEl.style.display = 'none';
+                
+                if (data.releases && data.releases.length > 0) {
+                    contentEl.style.display = 'block';
+                    displayReleasesTable(data.releases);
+                } else {
+                    emptyEl.style.display = 'block';
+                }
+            } catch (error) {
+                loadingEl.style.display = 'none';
+                showNotification('Failed to load releases: ' + error.message, 'error');
+            }
+        }
+
+        function displayReleasesTable(releases) {
+            const container = document.getElementById('releasesTableContainer');
+            
+            const table = document.createElement('table');
+            table.className = 'table table-striped table-hover table-sm';
+            table.style.fontSize = '0.875rem';
+            
+            // Add responsive wrapper
+            const tableWrapper = document.createElement('div');
+            tableWrapper.className = 'table-responsive';
+            tableWrapper.style.maxHeight = '60vh';
+            tableWrapper.style.overflowY = 'auto';
+            
+            const headers = ['Title', 'Size', 'Seeders', 'Source', 'Downloaded', 'Blacklisted', 'Updated'];
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            headers.forEach((header, index) => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                th.style.whiteSpace = 'nowrap';
+                
+                // Set specific column widths
+                if (index === 0) { // Title column
+                    th.style.minWidth = '300px';
+                    th.style.maxWidth = '400px';
+                } else if (index === 1) { // Size column
+                    th.style.width = '80px';
+                } else if (index === 2) { // Seeders column
+                    th.style.width = '80px';
+                } else if (index === 3) { // Source column
+                    th.style.width = '100px';
+                } else if (index === 4) { // Downloaded column
+                    th.style.width = '100px';
+                } else if (index === 5) { // Blacklisted column
+                    th.style.width = '100px';
+                } else if (index === 6) { // Updated column
+                    th.style.width = '120px';
+                }
+                
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            const tbody = document.createElement('tbody');
+            releases.forEach(release => {
+                const row = document.createElement('tr');
+                
+                // Title with magnet link
+                const titleCell = document.createElement('td');
+                titleCell.style.maxWidth = '400px';
+                titleCell.style.wordWrap = 'break-word';
+                titleCell.style.overflowWrap = 'break-word';
+                
+                if (release.link && release.link.startsWith('magnet:')) {
+                    const magnetLink = document.createElement('a');
+                    magnetLink.href = release.link;
+                    magnetLink.className = 'text-decoration-none';
+                    magnetLink.style.wordBreak = 'break-all';
+                    magnetLink.innerHTML = '<i class="fas fa-magnet text-danger me-2"></i>' + (release.title || 'N/A');
+                    titleCell.appendChild(magnetLink);
+                } else {
+                    titleCell.textContent = release.title || 'N/A';
+                    titleCell.style.wordBreak = 'break-all';
+                }
+                
+                // Size
+                const sizeCell = document.createElement('td');
+                sizeCell.textContent = release.size ? formatFileSize(release.size) : 'N/A';
+                sizeCell.style.whiteSpace = 'nowrap';
+                
+                // Seeders
+                const seedersCell = document.createElement('td');
+                seedersCell.style.whiteSpace = 'nowrap';
+                if (release.seeders !== null && release.seeders !== undefined) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge ' + (release.seeders > 10 ? 'bg-success' : release.seeders > 0 ? 'bg-warning' : 'bg-secondary');
+                    badge.textContent = release.seeders;
+                    seedersCell.appendChild(badge);
+                } else {
+                    seedersCell.textContent = 'N/A';
+                }
+                
+                // Source
+                const sourceCell = document.createElement('td');
+                sourceCell.style.whiteSpace = 'nowrap';
+                const sourceBadge = document.createElement('span');
+                sourceBadge.className = 'badge bg-info';
+                sourceBadge.textContent = release.source || 'Unknown';
+                sourceCell.appendChild(sourceBadge);
+                
+                // Downloaded
+                const downloadedCell = document.createElement('td');
+                downloadedCell.style.whiteSpace = 'nowrap';
+                const downloadedBadge = document.createElement('span');
+                downloadedBadge.className = 'badge ' + (release.downloaded ? 'bg-success' : 'bg-secondary');
+                downloadedBadge.textContent = release.downloaded ? 'Yes' : 'No';
+                downloadedCell.appendChild(downloadedBadge);
+                
+                // Blacklisted (toggleable)
+                const blacklistedCell = document.createElement('td');
+                blacklistedCell.style.whiteSpace = 'nowrap';
+                const blacklistBtn = document.createElement('button');
+                blacklistBtn.className = 'btn btn-sm ' + (release.blacklisted ? 'btn-danger' : 'btn-outline-secondary');
+                blacklistBtn.textContent = release.blacklisted ? 'Blacklisted' : 'Blacklist';
+                blacklistBtn.onclick = () => toggleBlacklist(release, blacklistBtn);
+                blacklistedCell.appendChild(blacklistBtn);
+                
+                // Updated
+                const updatedCell = document.createElement('td');
+                updatedCell.textContent = formatDate(release.updated_at);
+                updatedCell.style.whiteSpace = 'nowrap';
+                
+                row.appendChild(titleCell);
+                row.appendChild(sizeCell);
+                row.appendChild(seedersCell);
+                row.appendChild(sourceCell);
+                row.appendChild(downloadedCell);
+                row.appendChild(blacklistedCell);
+                row.appendChild(updatedCell);
+                
+                tbody.appendChild(row);
+            });
+            table.appendChild(tbody);
+            
+            // Wrap table in responsive container
+            tableWrapper.appendChild(table);
+            
+            container.innerHTML = '';
+            container.appendChild(tableWrapper);
+        }
+
+        async function toggleBlacklist(release, button) {
+            try {
+                const response = await fetch(`/api/releases/blacklist?guid=${encodeURIComponent(currentMediaGuid)}&hash_value=${encodeURIComponent(release.hash || '')}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    release.blacklisted = data.blacklisted;
+                    
+                    // Update button appearance
+                    button.className = 'btn btn-sm ' + (release.blacklisted ? 'btn-danger' : 'btn-outline-secondary');
+                    button.textContent = release.blacklisted ? 'Blacklisted' : 'Blacklist';
+                    
+                    showNotification(data.message, 'success');
+                } else {
+                    const error = await response.json();
+                    showNotification('Failed to toggle blacklist: ' + error.detail, 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to toggle blacklist: ' + error.message, 'error');
+            }
+        }
+
+        function formatFileSize(sizeInGB) {
+            if (sizeInGB === null || sizeInGB === undefined) return 'N/A';
+            if (sizeInGB === 0) return '0 GB';
+            
+            // Size is already in GB, so just format it nicely
+            if (sizeInGB >= 1) {
+                return Math.round(sizeInGB * 100) / 100 + ' GB';
+            } else {
+                // Convert to MB for small sizes
+                const sizeInMB = sizeInGB * 1024;
+                return Math.round(sizeInMB * 100) / 100 + ' MB';
+            }
         }
     </script>
 </body>

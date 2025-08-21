@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Optional, Dict, Any
 import sqlite3
 import os
@@ -330,3 +330,84 @@ async def get_statistics() -> Dict[str, Any]:
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+
+@router.get("/releases")
+async def get_releases_for_media(guid: str = Query(..., description="Media item GUID")) -> Dict[str, Any]:
+    """Get all releases for a specific media item by GUID"""
+    conn = get_db_connection()
+    
+    try:
+        query = """
+            SELECT 
+                title,
+                size,
+                seeders,
+                source,
+                downloaded,
+                blacklisted,
+                link,
+                hash,
+                updated_at
+            FROM media_release 
+            WHERE guid = ?
+            ORDER BY updated_at DESC
+        """
+        
+        cursor = conn.execute(query, (guid,))
+        columns = [description[0] for description in cursor.description]
+        rows = cursor.fetchall()
+        
+        releases = []
+        for row in rows:
+            release = dict(zip(columns, row))
+            # Convert boolean integers to actual booleans
+            release['downloaded'] = bool(release['downloaded'])
+            release['blacklisted'] = bool(release['blacklisted'])
+            releases.append(release)
+        
+        return {
+            "guid": guid,
+            "releases": releases,
+            "count": len(releases)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+
+@router.post("/releases/blacklist")
+async def toggle_blacklist_status(guid: str = Query(..., description="Media item GUID"), hash_value: str = Query(..., description="Release hash")) -> Dict[str, Any]:
+    """Toggle the blacklist status of a specific release"""
+    conn = get_db_connection()
+    
+    try:
+        # First, get the current blacklist status
+        cursor = conn.execute(
+            "SELECT blacklisted FROM media_release WHERE guid = ? AND hash = ?",
+            (guid, hash_value)
+        )
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Release not found")
+        
+        current_status = bool(row[0])
+        new_status = not current_status
+        
+        # Update the blacklist status
+        conn.execute(
+            "UPDATE media_release SET blacklisted = ?, updated_at = datetime('now') WHERE guid = ? AND hash = ?",
+            (1 if new_status else 0, guid, hash_value)
+        )
+        conn.commit()
+        
+        return {
+            "guid": guid,
+            "hash": hash_value,
+            "blacklisted": new_status,
+            "message": f"Release {'blacklisted' if new_status else 'unblacklisted'} successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")

@@ -121,6 +121,50 @@ Get ignored items.
 - `page` (optional): Page number (default: 1)
 - `page_size` (optional): Items per page (default: 50, max: 200)
 
+#### GET `/api/releases`
+Get all releases for a specific media item.
+
+**Parameters**:
+- `guid` (required): Media item GUID
+
+**Response**:
+```json
+{
+  "guid": "plex://movie/123",
+  "releases": [
+    {
+      "title": "Movie.Title.2024.1080p.BluRay.x265",
+      "size": 2147483648,
+      "seeders": 15,
+      "source": "rarbg",
+      "downloaded": false,
+      "blacklisted": false,
+      "link": "magnet:?xt=urn:btih:...",
+      "hash": "ABC123...",
+      "updated_at": "2024-01-01T12:00:00"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### POST `/api/releases/blacklist`
+Toggle the blacklist status of a specific release.
+
+**Parameters**:
+- `guid` (required): Media item GUID
+- `hash_value` (required): Release hash
+
+**Response**:
+```json
+{
+  "guid": "plex://movie/123",
+  "hash": "ABC123...",
+  "blacklisted": true,
+  "message": "Release blacklisted successfully"
+}
+```
+
 #### GET `/api/stats`
 Get summary statistics.
 
@@ -184,6 +228,19 @@ Health check endpoint.
 - Includes all visible columns and data
 - Automatic filename with date stamp
 - Respects current filters and sorting
+
+### Releases Management
+- **Click on any media item** to view its associated releases
+- **Releases modal** displays:
+  - Release title with magnet link icon
+  - File size (formatted in GB/MB)
+  - Seeder count with color-coded badges
+  - Source information
+  - Download status
+  - Blacklist status (toggleable)
+  - Last updated timestamp
+- **Blacklist toggle**: Click the blacklist button to toggle release status
+- **Magnet links**: Click the magnet icon to open the torrent link
 
 ### Dark Mode
 - Toggle between light and dark themes
