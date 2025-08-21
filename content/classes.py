@@ -65,6 +65,8 @@ class library:
             indices = []
             for setting in settings:
                 setting.setup()
+            if not cls.name in library.active:
+                library.active = [cls.name]
             # Ensure service gets added to active list even if no settings are defined
             if not cls.name in ignore.active:
                 ignore.active += [cls.name]
@@ -157,9 +159,8 @@ class ignore:
             indices = []
             for setting in settings:
                 setting.setup()
-            # Ensure service gets added to active list even if no settings are defined
-            if not cls.name in ignore.active:
-                ignore.active += [cls.name]
+                if not cls.name in ignore.active:
+                    ignore.active += [cls.name]
 
     def __new__(cls):
         activeservices = []
