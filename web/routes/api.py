@@ -47,8 +47,8 @@ async def get_media_items(
             params.append(media_type)
         
         if source:
-            query += " AND watchlisted_by LIKE ?"
-            params.append(f'%{source}%')
+            query += " AND source = ?"
+            params.append(source)
         
         if year:
             query += " AND year = ?"

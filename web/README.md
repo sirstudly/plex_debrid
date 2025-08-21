@@ -69,6 +69,8 @@ The web interface uses a unified database setup that automatically creates all n
 ### Database Features
 - **Unified View**: Single `v_media` view provides consistent data structure across all endpoints
 - **Enhanced Episode Display**: Episode titles include show name and season information (e.g., "Episode Title (Show Name - Season Name)")
+- **Source Tracking**: New `source` column tracks where media items originated (plex, trakt, overseerr, etc.) - single source per item
+- **Automatic Source Detection**: Source is automatically determined from the watchlist service when media items are processed (single source per item)
 - **Performance Optimized**: Indexes on status, year, source, and date columns
 - **Automatic Setup**: No manual database initialization required
 - **Backward Compatible**: Works with existing Plex Debrid databases
@@ -82,7 +84,7 @@ Get pending media items with filtering and pagination.
 
 **Parameters**:
 - `media_type` (optional): Filter by type (`movie`, `show`, `episode`)
-- `source` (optional): Filter by watchlist source (`plex`, `trakt`, `overseerr`)
+- `source` (optional): Filter by media source (`plex`, `trakt`, `overseerr`)
 - `year` (optional): Filter by year (e.g., `2024`)
 - `search` (optional): Search in titles
 - `sort_by` (optional): Sort by field (`watchlisted_at`, `title`, `year`, `updated_at`)
@@ -168,7 +170,7 @@ Health check endpoint.
 
 ### Advanced Filtering
 - **Media Type**: Filter by movies, shows, or episodes
-- **Source**: Filter by watchlist source (Plex, Trakt, Overseerr)
+- **Source**: Filter by media source (Plex, Trakt, Overseerr)
 - **Year**: Filter by release year
 - **Search**: Real-time search across titles
 - **Sorting**: Sort by watchlisted date, title, year, or updated date

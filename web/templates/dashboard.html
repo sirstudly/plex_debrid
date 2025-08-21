@@ -581,10 +581,10 @@
             table.className = 'table table-striped table-hover';
             
             // Determine headers based on the first item's media_type
-            let headers = ['Type', 'Title', 'Year', 'Source', 'Status', 'Added'];
+            let headers = ['Type', 'Title', 'Year', 'Source', 'Added By', 'Status', 'Added'];
             const firstItem = items[0];
             if (firstItem && firstItem.media_type === 'episode') {
-                headers = ['Type', 'Episode', 'Year', 'Source', 'Status', 'Added'];
+                headers = ['Type', 'Episode', 'Year', 'Source', 'Added By', 'Status', 'Added'];
             }
             
             const thead = document.createElement('thead');
@@ -616,6 +616,7 @@
                         <td><span class="badge bg-primary">Episode</span></td>
                         <td>${item.title || 'N/A'}</td>
                         <td>${item.year || 'N/A'}</td>
+                        <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
                         <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
                         <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
@@ -628,6 +629,7 @@
                         <td><span class="badge bg-${typeColor}">${typeLabel}</span></td>
                         <td>${item.title || 'N/A'}</td>
                         <td>${item.year || 'N/A'}</td>
+                        <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
                         <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
                         <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>

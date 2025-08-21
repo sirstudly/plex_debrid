@@ -1200,7 +1200,7 @@ class media:
         self.isanime()
         if self.type == 'movie':
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
-            sqlite_store.update_db(self, library)
+            sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
                 ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
                 self.watchlist.remove([], self)
@@ -1244,7 +1244,7 @@ class media:
                         self.watch()
         elif self.type == 'show':
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
-            sqlite_store.update_db(self, library)
+            sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
                 ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
                 self.watchlist.remove([], self)
@@ -1385,7 +1385,7 @@ class media:
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
         elif self.type == 'season':
             ui_print(f"processing: {self.parentTitle} {self.title}", debug=ui_settings.debug)
-            sqlite_store.update_db(self, library)
+            sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             debrid_downloaded = False
             for release in parentReleases:
                 if regex.match(self.deviation(), release.title, regex.I):
@@ -1469,7 +1469,7 @@ class media:
             for release in parentReleases:
                 if regex.match(self.deviation(), release.title, regex.I):
                     self.Releases += [release]
-            sqlite_store.update_db(self, library)
+            sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             debrid_downloaded = False
             retry = True
             if len(self.Releases) > 0:

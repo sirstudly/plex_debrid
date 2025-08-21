@@ -265,7 +265,9 @@ def mark_release_downloaded(media_obj, release) -> None:
     upsert_release(media_obj, release, downloaded=True)
 
 
-def update_db(media_obj, library_list) -> None:
+
+
+def update_db(media_obj, library_list, source=None) -> None:
     """Upsert current media status for movies, shows, seasons, and episodes.
 
     Movies: upsert into media_movie (with imdb/tmdb/tvdb, booleans, ignored).
@@ -328,6 +330,16 @@ def update_db(media_obj, library_list) -> None:
         except Exception:
             ignored = 0
 
+        # Determine source if not provided
+        if source is None:
+            try:
+                if hasattr(media_obj, 'watchlist') and hasattr(media_obj.watchlist, '__module__'):
+                    source = media_obj.watchlist.__module__.split('.')[-1]
+                else:
+                    source = 'plex'  # Default fallback
+            except Exception:
+                source = 'plex'  # Default fallback
+
         # Determine unique key
         key_guid = None
         if guid is not None and str(guid).strip() != "":
@@ -345,8 +357,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
             """
             INSERT INTO media_movie (
-                guid, title, year, imdb, tmdb, tvdb, released, collected, watched, downloading, ignored, watchlisted_by, watchlisted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                guid, title, year, imdb, tmdb, tvdb, released, collected, watched, downloading, ignored, watchlisted_by, watchlisted_at, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guid) DO UPDATE SET
                 title=excluded.title,
                 year=excluded.year,
@@ -360,6 +372,7 @@ def update_db(media_obj, library_list) -> None:
                 ignored=excluded.ignored,
                 watchlisted_by=excluded.watchlisted_by,
                 watchlisted_at=excluded.watchlisted_at,
+                source=excluded.source,
                 updated_at=datetime('now')
             """,
                 (
@@ -376,14 +389,15 @@ def update_db(media_obj, library_list) -> None:
                     ignored,
                     watchlisted_by,
                     _convert_watchlisted_at(media_obj),
+                    source,
                 ),
             )
         elif media_type == 'show':
             conn.execute(
                 """
                 INSERT INTO media_show (
-                    guid, leaf_count, child_count, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, leaf_count, child_count, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     leaf_count=excluded.leaf_count,
                     child_count=excluded.child_count,
@@ -399,6 +413,7 @@ def update_db(media_obj, library_list) -> None:
                     watched=excluded.watched,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
+                    source=excluded.source,
                     updated_at=datetime('now')
                 """,
                 (
@@ -417,6 +432,7 @@ def update_db(media_obj, library_list) -> None:
                     watched,
                     ignored,
                     watchlisted_by,
+                    source,
                 ),
             )
         elif media_type == 'season':
@@ -427,8 +443,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_season (
-                    guid, parent_title, title, parent_guid, year, leaf_count, idx, collected, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, parent_title, title, parent_guid, year, leaf_count, idx, collected, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     parent_title=excluded.parent_title,
                     title=excluded.title,
@@ -439,6 +455,7 @@ def update_db(media_obj, library_list) -> None:
                     collected=excluded.collected,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
+                    source=excluded.source,
                     updated_at=datetime('now')
                 """,
                 (
@@ -452,6 +469,7 @@ def update_db(media_obj, library_list) -> None:
                     collected,
                     ignored,
                     watchlisted_by,
+                    source,
                 ),
             )
         elif media_type == 'episode':
@@ -463,8 +481,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_episode (
-                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, collected, downloading, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, collected, downloading, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     grandparent_title=excluded.grandparent_title,
                     parent_title=excluded.parent_title,
@@ -477,6 +495,7 @@ def update_db(media_obj, library_list) -> None:
                     downloading=excluded.downloading,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
+                    source=excluded.source,
                     updated_at=datetime('now')
                 """,
                 (
@@ -492,6 +511,7 @@ def update_db(media_obj, library_list) -> None:
                     downloading_flag,
                     ignored,
                     watchlisted_by,
+                    source,
                 ),
             )
         conn.commit()

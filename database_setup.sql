@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS media_movie (
     ignored INTEGER,
     watchlisted_by TEXT,
     watchlisted_at TEXT,
+    source TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS media_show (
     ignored INTEGER,
     watchlisted_by TEXT,
     watchlisted_at TEXT,
+    source TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS media_season (
     collected INTEGER,
     ignored INTEGER,
     watchlisted_by TEXT,
+    source TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -72,6 +75,7 @@ CREATE TABLE IF NOT EXISTS media_episode (
     downloading INTEGER,
     ignored INTEGER,
     watchlisted_by TEXT,
+    source TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -110,6 +114,7 @@ SELECT
     tvdb,
     watchlisted_by,
     watchlisted_at,
+    source,
     updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
@@ -135,6 +140,7 @@ SELECT
     tvdb,
     watchlisted_by,
     watchlisted_at,
+    source,
     updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
@@ -167,6 +173,7 @@ SELECT
     NULL as tvdb,
     watchlisted_by,
     updated_at as watchlisted_at,
+    source,
     updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
@@ -188,16 +195,19 @@ CREATE INDEX IF NOT EXISTS idx_media_movie_status ON media_movie(collected, igno
 CREATE INDEX IF NOT EXISTS idx_media_movie_year ON media_movie(year);
 CREATE INDEX IF NOT EXISTS idx_media_movie_watchlisted_by ON media_movie(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_movie_watchlisted_at ON media_movie(watchlisted_at);
+CREATE INDEX IF NOT EXISTS idx_media_movie_source ON media_movie(source);
 
 CREATE INDEX IF NOT EXISTS idx_media_show_status ON media_show(collected, ignored);
 CREATE INDEX IF NOT EXISTS idx_media_show_year ON media_show(year);
 CREATE INDEX IF NOT EXISTS idx_media_show_watchlisted_by ON media_show(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_show_watchlisted_at ON media_show(watchlisted_at);
+CREATE INDEX IF NOT EXISTS idx_media_show_source ON media_show(source);
 
 CREATE INDEX IF NOT EXISTS idx_media_episode_status ON media_episode(collected, ignored, downloading);
 CREATE INDEX IF NOT EXISTS idx_media_episode_year ON media_episode(year);
 CREATE INDEX IF NOT EXISTS idx_media_episode_watchlisted_by ON media_episode(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_episode_updated_at ON media_episode(updated_at);
+CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 
 -- ============================================================================
 -- USAGE EXAMPLES
