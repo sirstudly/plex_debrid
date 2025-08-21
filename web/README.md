@@ -208,6 +208,14 @@ Health check endpoint.
 ### Database Configuration
 The web interface automatically uses the same SQLite database as your Plex Debrid installation. No additional configuration is required.
 
+### Template Structure
+The web interface uses a template-based approach for better development experience:
+
+- **`web/templates/dashboard.html`**: Main dashboard HTML template with embedded CSS and JavaScript
+- **`web/routes/static.py`**: Route handlers that serve the HTML templates
+- **Syntax Highlighting**: HTML templates can be viewed and edited with proper syntax highlighting in your IDE
+- **Separation of Concerns**: HTML/CSS/JS separated from Python code for easier maintenance
+
 ## Development
 
 ### Project Structure
@@ -218,7 +226,9 @@ web/
 ├── routes/
 │   ├── __init__.py
 │   ├── api.py            # API endpoints
-│   └── static.py         # Static HTML dashboard
+│   └── static.py         # Static route handlers
+├── templates/
+│   └── dashboard.html    # Dashboard HTML template
 ├── static/               # Static assets (CSS, JS, images)
 └── README.md            # This file
 ```
