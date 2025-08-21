@@ -590,9 +590,11 @@ async def dashboard(request: Request):
             const table = document.createElement('table');
             table.className = 'table table-striped table-hover';
             
-            let headers = ['Title', 'Year', 'Source', 'Added'];
-            if (type === 'episode' || items.some(item => item.parent_title)) {
-                headers = ['Show', 'Episode', 'Season', 'Source', 'Added'];
+            // Determine headers based on the first item's media_type
+            let headers = ['Type', 'Title', 'Year', 'Source', 'Status', 'Added'];
+            const firstItem = items[0];
+            if (firstItem && firstItem.media_type === 'episode') {
+                headers = ['Type', 'Show', 'Episode', 'Season', 'Source', 'Status', 'Added'];
             }
             
             const thead = document.createElement('thead');
@@ -609,21 +611,36 @@ async def dashboard(request: Request):
             items.forEach(item => {
                 const row = document.createElement('tr');
                 
-                if (type === 'episode' || item.parent_title) {
+                // Get status badge color
+                const statusColors = {
+                    'pending': 'warning',
+                    'downloading': 'info',
+                    'ignored': 'secondary',
+                    'collected': 'success'
+                };
+                const statusColor = statusColors[item.status] || 'secondary';
+                
+                if (item.media_type === 'episode') {
                     // Episode row
                     row.innerHTML = `
-                        <td>${item.grandparent_title || item.parent_title || 'N/A'}</td>
+                        <td><span class="badge bg-primary">Episode</span></td>
+                        <td>${item.title || 'N/A'}</td>
                         <td>${item.title || 'N/A'}</td>
                         <td>${item.parent_index || 'N/A'}</td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
+                        <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
                         <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
                     `;
                 } else {
                     // Movie/Show row
+                    const typeLabel = item.media_type === 'movie' ? 'Movie' : 'Show';
+                    const typeColor = item.media_type === 'movie' ? 'success' : 'info';
                     row.innerHTML = `
+                        <td><span class="badge bg-${typeColor}">${typeLabel}</span></td>
                         <td>${item.title || 'N/A'}</td>
                         <td>${item.year || 'N/A'}</td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
+                        <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
                         <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
                     `;
                 }

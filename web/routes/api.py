@@ -18,8 +18,9 @@ def get_db_connection():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
 
-@router.get("/pending")
-async def get_pending_items(
+@router.get("/media")
+async def get_media_items(
+    status: Optional[str] = Query(None, description="Filter by status: pending, downloading, ignored, collected"),
     media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
     source: Optional[str] = Query(None, description="Filter by watchlist source: plex, trakt, overseerr"),
     year: Optional[int] = Query(None, description="Filter by year"),
@@ -28,103 +29,51 @@ async def get_pending_items(
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
-    """Get all pending media items"""
+    """Get media items using the simplified v_media view"""
     conn = get_db_connection()
     
     try:
-        # Build query based on media type
-        if media_type == "movie":
-            query = """
-                SELECT guid, title, year, imdb, tmdb, tvdb, watchlisted_by, watchlisted_at, updated_at
-                FROM media_movie 
-                WHERE collected = 0 AND ignored = 0 AND downloading = 0
-            """
-        elif media_type == "show":
-            query = """
-                SELECT guid, title, year, imdb, tmdb, tvdb, watchlisted_by, watchlisted_at, updated_at
-                FROM media_show 
-                WHERE collected = 0 AND ignored = 0
-            """
-        elif media_type == "episode":
-            query = """
-                SELECT guid, title, parent_title, grandparent_title, parent_index, idx, year, 
-                       watchlisted_by, updated_at
-                FROM media_episode 
-                WHERE collected = 0 AND ignored = 0 AND downloading = 0
-            """
-        else:
-            # Get all types
-            query = """
-                SELECT 'movie' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, watchlisted_at, updated_at
-                FROM media_movie 
-                WHERE collected = 0 AND ignored = 0 AND downloading = 0
-                UNION ALL
-                SELECT 'show' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, watchlisted_at, updated_at
-                FROM media_show 
-                WHERE collected = 0 AND ignored = 0
-                UNION ALL
-                SELECT 'episode' as type, guid, 
-                       CASE 
-                           WHEN parent_title IS NOT NULL AND parent_title != '' 
-                           THEN title || ' (' || parent_title || ')'
-                           ELSE title 
-                       END as title, 
-                       year, NULL as imdb, NULL as tmdb, NULL as tvdb, 
-                       watchlisted_by, updated_at as watchlisted_at, updated_at
-                FROM media_episode 
-                WHERE collected = 0 AND ignored = 0 AND downloading = 0
-            """
+        # Build query using the view
+        query = "SELECT * FROM v_media WHERE 1=1"
+        params = []
         
-        # Add filters if specified
-        filters = []
+        # Add filters
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        
+        if media_type:
+            query += " AND media_type = ?"
+            params.append(media_type)
+        
         if source:
-            filters.append(f"watchlisted_by LIKE '%{source}%'")
+            query += " AND watchlisted_by LIKE ?"
+            params.append(f'%{source}%')
+        
         if year:
-            filters.append(f"year = {year}")
+            query += " AND year = ?"
+            params.append(year)
+        
         if search:
-            filters.append(f"title LIKE '%{search}%'")
+            query += " AND title LIKE ?"
+            params.append(f'%{search}%')
         
-        if filters:
-            if "WHERE" in query:
-                query += f" AND {' AND '.join(filters)}"
-            else:
-                query += f" WHERE {' AND '.join(filters)}"
-        
-        # Get total count first
-        if "UNION ALL" in query:
-            # For UNION ALL queries, we need to wrap the entire query in a subquery
-            count_query = f"SELECT COUNT(*) as total FROM ({query}) as subquery"
-        else:
-            # For single table queries, replace the entire SELECT clause
-            # Find the position of FROM and replace everything between SELECT and FROM
-            from_pos = query.find("FROM")
-            if from_pos != -1:
-                count_query = "SELECT COUNT(*) as total " + query[from_pos:]
-            else:
-                # Fallback: just replace SELECT with COUNT
-                count_query = query.replace("SELECT", "SELECT COUNT(*) as total", 1)
-        
-        count_cursor = conn.execute(count_query)
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM ({query}) as subquery"
+        count_cursor = conn.execute(count_query, params)
         total_count = count_cursor.fetchone()[0]
         
-        # Add pagination with sorting
+        # Add sorting and pagination
         offset = (page - 1) * page_size
-        
-        # Determine sort column based on media type and sort_by parameter
-        if media_type == "episode":
-            sort_column = "updated_at" if sort_by == "watchlisted_at" else sort_by
-        else:
-            sort_column = sort_by
         
         # Validate sort column to prevent SQL injection
         valid_sort_columns = ["watchlisted_at", "title", "year", "updated_at"]
-        if sort_column not in valid_sort_columns:
-            sort_column = "watchlisted_at"
+        if sort_by not in valid_sort_columns:
+            sort_by = "watchlisted_at"
         
-        query += f" ORDER BY {sort_column} DESC LIMIT {page_size} OFFSET {offset}"
-
-        print(f"query: {query}")
-        cursor = conn.execute(query)
+        query += f" ORDER BY {sort_by} DESC LIMIT {page_size} OFFSET {offset}"
+        
+        cursor = conn.execute(query, params)
         columns = [description[0] for description in cursor.description]
         rows = cursor.fetchall()
         
@@ -149,268 +98,189 @@ async def get_pending_items(
                 "has_prev": has_prev
             },
             "filters": {
+                "status": status,
                 "media_type": media_type,
-                "source": source
+                "source": source,
+                "year": year,
+                "search": search
             }
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+
+@router.get("/pending")
+async def get_pending_items(
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    source: Optional[str] = Query(None, description="Filter by watchlist source: plex, trakt, overseerr"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
+) -> Dict[str, Any]:
+    """Get pending items using the simplified view"""
+    return await get_media_items(
+        status="pending",
+        media_type=media_type,
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
 
 @router.get("/pending/movies")
 async def get_pending_movies(
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get pending movies only"""
-    return await get_pending_items(media_type="movie", source=source, page=page, page_size=page_size)
+    return await get_media_items(
+        status="pending",
+        media_type="movie",
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
 
 @router.get("/pending/shows")
 async def get_pending_shows(
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get pending TV shows only"""
-    return await get_pending_items(media_type="show", source=source, page=page, page_size=page_size)
+    return await get_media_items(
+        status="pending",
+        media_type="show",
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
 
 @router.get("/pending/episodes")
 async def get_pending_episodes(
     source: Optional[str] = Query(None, description="Filter by watchlist source"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
     """Get pending episodes only"""
-    return await get_pending_items(media_type="episode", source=source, page=page, page_size=page_size)
+    return await get_media_items(
+        status="pending",
+        media_type="episode",
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
 
 @router.get("/downloading")
 async def get_downloading_items(
     media_type: Optional[str] = Query(None, description="Filter by media type: movie, episode"),
+    source: Optional[str] = Query(None, description="Filter by watchlist source"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("updated_at", description="Sort by: watchlisted_at, title, year, updated_at"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
-    """Get currently downloading items"""
-    conn = get_db_connection()
-    
-    try:
-        if media_type == "movie":
-            query = """
-                SELECT 'movie' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
-                FROM media_movie 
-                WHERE downloading = 1
-                ORDER BY updated_at DESC
-            """
-        elif media_type == "episode":
-            query = """
-                SELECT 'episode' as type, guid, 
-                       CASE 
-                           WHEN parent_title IS NOT NULL AND parent_title != '' 
-                           THEN title || ' (' || parent_title || ')'
-                           ELSE title 
-                       END as title, 
-                       year, NULL as imdb, NULL as tmdb, NULL as tvdb, 
-                       watchlisted_by, updated_at
-                FROM media_episode 
-                WHERE downloading = 1
-                ORDER BY updated_at DESC
-            """
-        else:
-            query = """
-                SELECT 'movie' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
-                FROM media_movie 
-                WHERE downloading = 1
-                UNION ALL
-                SELECT 'episode' as type, guid, 
-                       CASE 
-                           WHEN parent_title IS NOT NULL AND parent_title != '' 
-                           THEN title || ' (' || parent_title || ')'
-                           ELSE title 
-                       END as title, 
-                       year, NULL as imdb, NULL as tmdb, NULL as tvdb, 
-                       watchlisted_by, updated_at
-                FROM media_episode 
-                WHERE downloading = 1
-                ORDER BY updated_at DESC
-            """
-        
-        # Get total count first
-        if "UNION ALL" in query:
-            # For UNION ALL queries, we need to wrap the entire query in a subquery
-            count_query = f"SELECT COUNT(*) as total FROM ({query}) as subquery"
-        else:
-            # For single table queries, replace the entire SELECT clause
-            # Find the position of FROM and replace everything between SELECT and FROM
-            from_pos = query.find("FROM")
-            if from_pos != -1:
-                count_query = "SELECT COUNT(*) as total " + query[from_pos:]
-            else:
-                # Fallback: just replace SELECT with COUNT
-                count_query = query.replace("SELECT", "SELECT COUNT(*) as total", 1)
-        
-        count_cursor = conn.execute(count_query)
-        total_count = count_cursor.fetchone()[0]
-        
-        # Add pagination
-        offset = (page - 1) * page_size
-        query += f" LIMIT {page_size} OFFSET {offset}"
-        
-        cursor = conn.execute(query)
-        columns = [description[0] for description in cursor.description]
-        rows = cursor.fetchall()
-        
-        items = []
-        for row in rows:
-            item = dict(zip(columns, row))
-            items.append(item)
-        
-        # Calculate pagination info
-        total_pages = (total_count + page_size - 1) // page_size
-        has_next = page < total_pages
-        has_prev = page > 1
-        
-        return {
-            "items": items,
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total_count": total_count,
-                "total_pages": total_pages,
-                "has_next": has_next,
-                "has_prev": has_prev
-            }
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+    """Get downloading items using the simplified view"""
+    return await get_media_items(
+        status="downloading",
+        media_type=media_type,
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
 
 @router.get("/ignored")
 async def get_ignored_items(
     media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    source: Optional[str] = Query(None, description="Filter by watchlist source"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("updated_at", description="Sort by: watchlisted_at, title, year, updated_at"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
-    """Get ignored items"""
-    conn = get_db_connection()
-    
-    try:
-        if media_type == "movie":
-            query = """
-                SELECT 'movie' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
-                FROM media_movie 
-                WHERE ignored = 1
-            """
-        elif media_type == "show":
-            query = """
-                SELECT 'show' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
-                FROM media_show 
-                WHERE ignored = 1
-            """
-        elif media_type == "episode":
-            query = """
-                SELECT 'episode' as type, guid, 
-                       CASE 
-                           WHEN parent_title IS NOT NULL AND parent_title != '' 
-                           THEN title || ' (' || parent_title || ')'
-                           ELSE title 
-                       END as title, 
-                       year, NULL as imdb, NULL as tmdb, NULL as tvdb, 
-                       watchlisted_by, updated_at
-                FROM media_episode 
-                WHERE ignored = 1
-            """
-        else:
-            query = """
-                SELECT 'movie' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
-                FROM media_movie 
-                WHERE ignored = 1
-                UNION ALL
-                SELECT 'show' as type, guid, title, year, imdb, tmdb, tvdb, watchlisted_by, updated_at
-                FROM media_show 
-                WHERE ignored = 1
-                UNION ALL
-                SELECT 'episode' as type, guid, 
-                       CASE 
-                           WHEN parent_title IS NOT NULL AND parent_title != '' 
-                           THEN title || ' (' || parent_title || ')'
-                           ELSE title 
-                       END as title, 
-                       year, NULL as imdb, NULL as tmdb, NULL as tvdb, 
-                       watchlisted_by, updated_at
-                FROM media_episode 
-                WHERE ignored = 1
-            """
-        
-        # Get total count first
-        if "UNION ALL" in query:
-            # For UNION ALL queries, we need to wrap the entire query in a subquery
-            count_query = f"SELECT COUNT(*) as total FROM ({query}) as subquery"
-        else:
-            # For single table queries, replace the entire SELECT clause
-            # Find the position of FROM and replace everything between SELECT and FROM
-            from_pos = query.find("FROM")
-            if from_pos != -1:
-                count_query = "SELECT COUNT(*) as total " + query[from_pos:]
-            else:
-                # Fallback: just replace SELECT with COUNT
-                count_query = query.replace("SELECT", "SELECT COUNT(*) as total", 1)
-        
-        count_cursor = conn.execute(count_query)
-        total_count = count_cursor.fetchone()[0]
-        
-        # Add pagination
-        offset = (page - 1) * page_size
-        query += f" LIMIT {page_size} OFFSET {offset}"
-        
-        cursor = conn.execute(query)
-        columns = [description[0] for description in cursor.description]
-        rows = cursor.fetchall()
-        
-        items = []
-        for row in rows:
-            item = dict(zip(columns, row))
-            items.append(item)
-        
-        # Calculate pagination info
-        total_pages = (total_count + page_size - 1) // page_size
-        has_next = page < total_pages
-        has_prev = page > 1
-        
-        return {
-            "items": items,
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total_count": total_count,
-                "total_pages": total_pages,
-                "has_next": has_next,
-                "has_prev": has_prev
-            }
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+    """Get ignored items using the simplified view"""
+    return await get_media_items(
+        status="ignored",
+        media_type=media_type,
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
+
+@router.get("/collected")
+async def get_collected_items(
+    media_type: Optional[str] = Query(None, description="Filter by media type: movie, show, episode"),
+    source: Optional[str] = Query(None, description="Filter by watchlist source"),
+    year: Optional[int] = Query(None, description="Filter by year"),
+    search: Optional[str] = Query(None, description="Search in titles"),
+    sort_by: Optional[str] = Query("updated_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
+) -> Dict[str, Any]:
+    """Get collected items using the simplified view"""
+    return await get_media_items(
+        status="collected",
+        media_type=media_type,
+        source=source,
+        year=year,
+        search=search,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
 
 @router.get("/stats")
 async def get_statistics() -> Dict[str, Any]:
-    """Get summary statistics"""
+    """Get summary statistics using the simplified view"""
     conn = get_db_connection()
     
     try:
-        # Get counts for different media types and statuses
+        # Get counts for different statuses and media types
         stats_query = """
             SELECT 
-                (SELECT COUNT(*) FROM media_movie WHERE collected = 0 AND ignored = 0 AND downloading = 0) as pending_movies,
-                (SELECT COUNT(*) FROM media_show WHERE collected = 0 AND ignored = 0) as pending_shows,
-                (SELECT COUNT(*) FROM media_episode WHERE collected = 0 AND ignored = 0 AND downloading = 0) as pending_episodes,
-                (SELECT COUNT(*) FROM media_movie WHERE downloading = 1) as downloading_movies,
-                (SELECT COUNT(*) FROM media_episode WHERE downloading = 1) as downloading_episodes,
-                (SELECT COUNT(*) FROM media_movie WHERE ignored = 1) as ignored_movies,
-                (SELECT COUNT(*) FROM media_show WHERE ignored = 1) as ignored_shows,
-                (SELECT COUNT(*) FROM media_episode WHERE ignored = 1) as ignored_episodes,
-                (SELECT COUNT(*) FROM media_movie WHERE collected = 1) as collected_movies,
-                (SELECT COUNT(*) FROM media_show WHERE collected = 1) as collected_shows,
-                (SELECT COUNT(*) FROM media_episode WHERE collected = 1) as collected_episodes
+                SUM(CASE WHEN status = 'pending' AND media_type = 'movie' THEN 1 ELSE 0 END) as pending_movies,
+                SUM(CASE WHEN status = 'pending' AND media_type = 'show' THEN 1 ELSE 0 END) as pending_shows,
+                SUM(CASE WHEN status = 'pending' AND media_type = 'episode' THEN 1 ELSE 0 END) as pending_episodes,
+                SUM(CASE WHEN status = 'downloading' AND media_type = 'movie' THEN 1 ELSE 0 END) as downloading_movies,
+                SUM(CASE WHEN status = 'downloading' AND media_type = 'episode' THEN 1 ELSE 0 END) as downloading_episodes,
+                SUM(CASE WHEN status = 'ignored' AND media_type = 'movie' THEN 1 ELSE 0 END) as ignored_movies,
+                SUM(CASE WHEN status = 'ignored' AND media_type = 'show' THEN 1 ELSE 0 END) as ignored_shows,
+                SUM(CASE WHEN status = 'ignored' AND media_type = 'episode' THEN 1 ELSE 0 END) as ignored_episodes,
+                SUM(CASE WHEN status = 'collected' AND media_type = 'movie' THEN 1 ELSE 0 END) as collected_movies,
+                SUM(CASE WHEN status = 'collected' AND media_type = 'show' THEN 1 ELSE 0 END) as collected_shows,
+                SUM(CASE WHEN status = 'collected' AND media_type = 'episode' THEN 1 ELSE 0 END) as collected_episodes
+            FROM v_media
         """
         
         cursor = conn.execute(stats_query)
