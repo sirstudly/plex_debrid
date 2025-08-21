@@ -14,7 +14,7 @@ def _ensure_dir(path: str) -> None:
 
 
 def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3") -> str:
-    """Initialize the SQLite database and ensure the media tables exist.
+    """Initialize the SQLite database and ensure all tables and views exist.
 
     Args:
         db_dir: Directory to place the database file. Defaults to './store'.
@@ -39,106 +39,126 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
             except Exception:
                 pass
         _connection = sqlite3.connect(db_file, check_same_thread=False)
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_movie (
-                guid TEXT PRIMARY KEY,
-                title TEXT,
-                year INTEGER,
-                imdb TEXT,
-                tmdb TEXT,
-                tvdb TEXT,
-                released INTEGER,
-                collected INTEGER,
-                watched INTEGER,
-                downloading INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                watchlisted_at TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_show (
-                guid TEXT PRIMARY KEY,
-                leaf_count INTEGER,
-                child_count INTEGER,
-                title TEXT,
-                year INTEGER,
-                public_pages_url TEXT,
-                imdb TEXT,
-                tmdb TEXT,
-                tvdb TEXT,
-                released INTEGER,
-                collected INTEGER,
-                watched INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                watchlisted_at TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_season (
-                guid TEXT PRIMARY KEY,
-                parent_title TEXT,
-                title TEXT,
-                parent_guid TEXT,
-                year INTEGER,
-                leaf_count INTEGER,
-                idx INTEGER,
-                collected INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_episode (
-                guid TEXT PRIMARY KEY,
-                grandparent_title TEXT,
-                parent_title TEXT,
-                title TEXT,
-                parent_guid TEXT,
-                parent_index INTEGER,
-                idx INTEGER,
-                year INTEGER,
-                collected INTEGER,
-                downloading INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_release (
-                guid TEXT NOT NULL,
-                title TEXT,
-                size REAL,
-                link TEXT,
-                hash TEXT,
-                seeders INTEGER,
-                source TEXT,
-                downloaded INTEGER,
-                blacklisted INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                PRIMARY KEY (guid, hash)
-            )
-            """
-        )
-        # No additional indices required currently
-        _connection.commit()
+        
+        # Load and execute the comprehensive database setup script
+        setup_script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database_setup.sql')
+        try:
+            with open(setup_script_path, 'r') as f:
+                setup_script = f.read()
+            _connection.executescript(setup_script)
+            _connection.commit()
+        except FileNotFoundError:
+            print(f"Warning: Could not find database setup script at {setup_script_path}")
+            print("Database will be initialized with basic tables only.")
+            # Fallback to basic table creation if setup script is not found
+            _create_basic_tables(_connection)
+        except Exception as e:
+            print(f"Error executing database setup script: {e}")
+            print("Falling back to basic table creation.")
+            _create_basic_tables(_connection)
+        
         _db_path = db_file
 
     return db_file
+
+def _create_basic_tables(connection):
+    """Create basic tables as fallback if setup script is not available"""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS media_movie (
+            guid TEXT PRIMARY KEY,
+            title TEXT,
+            year INTEGER,
+            imdb TEXT,
+            tmdb TEXT,
+            tvdb TEXT,
+            released INTEGER,
+            collected INTEGER,
+            watched INTEGER,
+            downloading INTEGER,
+            ignored INTEGER,
+            watchlisted_by TEXT,
+            watchlisted_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS media_show (
+            guid TEXT PRIMARY KEY,
+            leaf_count INTEGER,
+            child_count INTEGER,
+            title TEXT,
+            year INTEGER,
+            public_pages_url TEXT,
+            imdb TEXT,
+            tmdb TEXT,
+            tvdb TEXT,
+            released INTEGER,
+            collected INTEGER,
+            watched INTEGER,
+            ignored INTEGER,
+            watchlisted_by TEXT,
+            watchlisted_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS media_season (
+            guid TEXT PRIMARY KEY,
+            parent_title TEXT,
+            title TEXT,
+            parent_guid TEXT,
+            year INTEGER,
+            leaf_count INTEGER,
+            idx INTEGER,
+            collected INTEGER,
+            ignored INTEGER,
+            watchlisted_by TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS media_episode (
+            guid TEXT PRIMARY KEY,
+            grandparent_title TEXT,
+            parent_title TEXT,
+            title TEXT,
+            parent_guid TEXT,
+            parent_index INTEGER,
+            idx INTEGER,
+            year INTEGER,
+            collected INTEGER,
+            downloading INTEGER,
+            ignored INTEGER,
+            watchlisted_by TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS media_release (
+            guid TEXT NOT NULL,
+            title TEXT,
+            size REAL,
+            link TEXT,
+            hash TEXT,
+            seeders INTEGER,
+            source TEXT,
+            downloaded INTEGER,
+            blacklisted INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (guid, hash)
+        )
+        """
+    )
+    connection.commit()
 
 
 def _get_connection() -> sqlite3.Connection:

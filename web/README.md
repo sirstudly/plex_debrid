@@ -38,6 +38,8 @@ A modern web dashboard for monitoring and managing Plex Debrid media items. This
    ```bash
    python web_server.py --host 0.0.0.0 --port 8008
    ```
+   
+   The database will be automatically initialized with all necessary tables, views, and indexes on first startup.
 
 3. **Access the Dashboard**:
    Open your browser and navigate to `http://localhost:8008`
@@ -54,6 +56,21 @@ python main.py
 ```bash
 uvicorn web.app:app --host 0.0.0.0 --port 8008 --reload
 ```
+
+## Database Setup
+
+The web interface uses a unified database setup that automatically creates all necessary tables, views, and indexes on startup. The setup is handled by the `database_setup.sql` file which includes:
+
+- **Tables**: `media_movie`, `media_show`, `media_season`, `media_episode`, `media_release`
+- **Views**: `v_media` - Unified view for all media items with status
+- **Indexes**: Performance indexes on commonly queried columns
+- **Automatic Initialization**: Runs on first startup, no manual setup required
+
+### Database Features
+- **Unified View**: Single `v_media` view provides consistent data structure across all endpoints
+- **Performance Optimized**: Indexes on status, year, source, and date columns
+- **Automatic Setup**: No manual database initialization required
+- **Backward Compatible**: Works with existing Plex Debrid databases
 
 ## API Endpoints
 
