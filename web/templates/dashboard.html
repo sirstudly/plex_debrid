@@ -584,7 +584,7 @@
             let headers = ['Type', 'Title', 'Year', 'Source', 'Status', 'Added'];
             const firstItem = items[0];
             if (firstItem && firstItem.media_type === 'episode') {
-                headers = ['Type', 'Show', 'Episode', 'Season', 'Source', 'Status', 'Added'];
+                headers = ['Type', 'Episode', 'Year', 'Source', 'Status', 'Added'];
             }
             
             const thead = document.createElement('thead');
@@ -615,8 +615,7 @@
                     row.innerHTML = `
                         <td><span class="badge bg-primary">Episode</span></td>
                         <td>${item.title || 'N/A'}</td>
-                        <td>${item.title || 'N/A'}</td>
-                        <td>${item.parent_index || 'N/A'}</td>
+                        <td>${item.year || 'N/A'}</td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
                         <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
                         <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>

@@ -68,6 +68,7 @@ The web interface uses a unified database setup that automatically creates all n
 
 ### Database Features
 - **Unified View**: Single `v_media` view provides consistent data structure across all endpoints
+- **Enhanced Episode Display**: Episode titles include show name and season information (e.g., "Episode Title (Show Name - Season Name)")
 - **Performance Optimized**: Indexes on status, year, source, and date columns
 - **Automatic Setup**: No manual database initialization required
 - **Backward Compatible**: Works with existing Plex Debrid databases

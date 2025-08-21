@@ -153,6 +153,10 @@ SELECT
     'episode' as media_type,
     guid,
     CASE 
+        WHEN grandparent_title IS NOT NULL AND grandparent_title != '' AND parent_title IS NOT NULL AND parent_title != '' 
+        THEN title || ' (' || grandparent_title || ' - ' || parent_title || ')'
+        WHEN grandparent_title IS NOT NULL AND grandparent_title != '' 
+        THEN title || ' (' || grandparent_title || ')'
         WHEN parent_title IS NOT NULL AND parent_title != '' 
         THEN title || ' (' || parent_title || ')'
         ELSE title 
