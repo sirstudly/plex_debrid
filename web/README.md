@@ -1,134 +1,357 @@
 # Plex Debrid Web Interface
 
-A web-based dashboard for monitoring pending media items in Plex Debrid.
+A modern web dashboard for monitoring and managing Plex Debrid media items. This interface provides real-time monitoring of pending, downloading, and ignored media items with advanced filtering and management capabilities.
 
 ## Features
 
+### Core Features
 - **Real-time Dashboard**: Monitor pending, downloading, and ignored media items
-- **Statistics Overview**: View counts of items by status and media type
-- **Filtering**: Filter items by media type (movies, shows, episodes) and source
-- **RESTful API**: Full API for programmatic access to media status
+- **Statistics Overview**: Quick view of item counts across all categories
+- **Pagination**: Efficient handling of large datasets
 - **Responsive Design**: Works on desktop and mobile devices
+
+### Phase 2 Enhancements
+- **Auto-refresh**: Automatic data updates every 15s, 30s, 1m, or 5m
+- **Advanced Filtering**: Filter by media type, source, year, and search terms
+- **Search Functionality**: Real-time search across titles with debounced input
+- **Export Capabilities**: Export filtered data to CSV format
+- **Dark Mode**: Toggle between light and dark themes with persistent preference
+- **Keyboard Shortcuts**: Quick navigation and actions using keyboard
+- **Bulk Actions**: Select multiple items for batch operations (coming soon)
+- **Notifications**: Toast notifications for user feedback
 
 ## Quick Start
 
-### Option 1: Standalone Web Server
+### Prerequisites
+- Python 3.8+
+- Plex Debrid installation with SQLite database
+- Required Python packages (see requirements.txt)
 
-1. Install dependencies:
+### Installation
+
+1. **Install Dependencies**:
    ```bash
-   pip install -r requirements.txt
+   pip install fastapi uvicorn[standard]
    ```
 
-2. Start the web server:
+2. **Start the Web Server**:
    ```bash
-   python web_server.py
+   python web_server.py --host 0.0.0.0 --port 8008
    ```
+   
+   The database will be automatically initialized with all necessary tables, views, and indexes on first startup.
 
-3. Open your browser to: http://127.0.0.1:8008/dashboard
+3. **Access the Dashboard**:
+   Open your browser and navigate to `http://localhost:8008`
 
-### Option 2: From Main Application
+### Alternative Startup Methods
 
-1. Run the main Plex Debrid application:
-   ```bash
-   python main.py
-   ```
+**Using the main CLI**:
+```bash
+python main.py
+# Select "Web Interface" option
+```
 
-2. Select "Web Interface" from the main menu
+**Using uvicorn directly**:
+```bash
+uvicorn web.app:app --host 0.0.0.0 --port 8008 --reload
+```
 
-3. Follow the instructions to start the web server
+## Database Setup
+
+The web interface uses a unified database setup that automatically creates all necessary tables, views, and indexes on startup. The setup is handled by the `database_setup.sql` file which includes:
+
+- **Tables**: `media_movie`, `media_show`, `media_season`, `media_episode`, `media_release`
+- **Views**: `v_media` - Unified view for all media items with status
+- **Indexes**: Performance indexes on commonly queried columns
+- **Automatic Initialization**: Runs on first startup, no manual setup required
+
+### Database Features
+- **Unified View**: Single `v_media` view provides consistent data structure across all endpoints
+- **Enhanced Episode Display**: Episode titles include show name and season information (e.g., "Episode Title (Show Name - Season Name)")
+- **Source Tracking**: New `source` column tracks where media items originated (plex, trakt, overseerr, etc.) - single source per item
+- **Automatic Source Detection**: Source is automatically determined from the watchlist service when media items are processed (single source per item)
+- **Performance Optimized**: Indexes on status, year, source, and date columns
+- **Automatic Setup**: No manual database initialization required
+- **Backward Compatible**: Works with existing Plex Debrid databases
 
 ## API Endpoints
 
 ### Core Endpoints
 
-- `GET /api/pending` - Get all pending media items
-- `GET /api/pending/movies` - Get pending movies only
-- `GET /api/pending/shows` - Get pending TV shows only
-- `GET /api/pending/episodes` - Get pending episodes only
-- `GET /api/downloading` - Get currently downloading items
-- `GET /api/ignored` - Get ignored items
-- `GET /api/stats` - Get summary statistics
+#### GET `/api/pending`
+Get pending media items with filtering and pagination.
 
-### Query Parameters
+**Parameters**:
+- `media_type` (optional): Filter by type (`movie`, `show`, `season`, `episode`)
+- `source` (optional): Filter by media source (`plex`, `trakt`, `overseerr`)
+- `year` (optional): Filter by year (e.g., `2024`)
+- `search` (optional): Search in titles
+- `sort_by` (optional): Sort by field (`watchlisted_at`, `title`, `year`, `updated_at`)
+- `page` (optional): Page number (default: 1)
+- `page_size` (optional): Items per page (default: 50, max: 200)
 
-- `media_type`: Filter by type (movie, show, episode)
-- `source`: Filter by watchlist source (plex, trakt, overseerr)
-- `page`: Page number (1-based, default: 1)
-- `page_size`: Items per page (1-200, default: 50)
-
-### Examples
-
+**Example**:
 ```bash
-# Get all pending movies from Plex
-curl "http://127.0.0.1:8008/api/pending/movies?source=plex"
-
-# Get statistics
-curl "http://127.0.0.1:8008/api/stats"
-
-# Get first page of pending items (50 items)
-curl "http://127.0.0.1:8008/api/pending?page=1&page_size=50"
-
-# Get second page of downloading items
-curl "http://127.0.0.1:8008/api/downloading?page=2&page_size=25"
+curl "http://localhost:8008/api/pending?media_type=movie&year=2024&page=1&page_size=25"
 ```
+
+#### GET `/api/pending/movies`
+Get pending movies only.
+
+#### GET `/api/pending/shows`
+Get pending TV shows only.
+
+#### GET `/api/pending/episodes`
+Get pending episodes only.
+
+#### GET `/api/downloading`
+Get currently downloading items.
+
+**Parameters**:
+- `media_type` (optional): Filter by type (`movie`, `episode`)
+- `page` (optional): Page number (default: 1)
+- `page_size` (optional): Items per page (default: 50, max: 200)
+
+#### GET `/api/ignored`
+Get ignored items.
+
+**Parameters**:
+- `media_type` (optional): Filter by type (`movie`, `show`, `season`, `episode`)
+- `page` (optional): Page number (default: 1)
+- `page_size` (optional): Items per page (default: 50, max: 200)
+
+#### GET `/api/releases`
+Get all releases for a specific media item.
+
+**Parameters**:
+- `guid` (required): Media item GUID
+
+**Response**:
+```json
+{
+  "guid": "plex://movie/123",
+  "releases": [
+    {
+      "title": "Movie.Title.2024.1080p.BluRay.x265",
+      "size": 2147483648,
+      "seeders": 15,
+      "source": "rarbg",
+      "downloaded": false,
+      "blacklisted": false,
+      "link": "magnet:?xt=urn:btih:...",
+      "hash": "ABC123...",
+      "updated_at": "2024-01-01T12:00:00"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### POST `/api/releases/blacklist`
+Toggle the blacklist status of a specific release.
+
+**Parameters**:
+- `guid` (required): Media item GUID
+- `hash_value` (required): Release hash
+
+**Response**:
+```json
+{
+  "guid": "plex://movie/123",
+  "hash": "ABC123...",
+  "blacklisted": true,
+  "message": "Release blacklisted successfully"
+}
+```
+
+#### GET `/api/stats`
+Get summary statistics.
+
+**Response**:
+```json
+{
+  "pending": {
+    "movies": 150,
+    "shows": 25,
+    "seasons": 50,
+    "episodes": 300,
+    "total": 525
+  },
+  "downloading": {
+    "movies": 5,
+    "episodes": 12,
+    "total": 17
+  },
+  "ignored": {
+    "movies": 10,
+    "shows": 2,
+    "seasons": 5,
+    "episodes": 15,
+    "total": 32
+  },
+  "collected": {
+    "movies": 1000,
+    "shows": 200,
+    "seasons": 100,
+    "episodes": 2500,
+    "total": 3800
+  }
+}
+```
+
+### Utility Endpoints
+
+#### GET `/`
+Root endpoint with basic status information.
+
+#### GET `/health`
+Health check endpoint.
+
+## User Interface Features
+
+### Auto-Refresh
+- Toggle automatic data refresh on/off
+- Configurable refresh intervals (15s, 30s, 1m, 5m)
+- Visual indicator when auto-refresh is active
+
+### Advanced Filtering
+- **Media Type**: Filter by movies, shows, seasons, or episodes
+- **Source**: Filter by media source (Plex, Trakt, Overseerr)
+- **Year**: Filter by release year
+- **Search**: Real-time search across titles
+- **Sorting**: Sort by watchlisted date, title, year, or updated date
+- **Page Size**: Choose how many items to display per page
+
+### Export Functionality
+- Export current filtered data to CSV
+- Includes all visible columns and data
+- Automatic filename with date stamp
+- Respects current filters and sorting
+
+### Releases Management
+- **Click on any media item** to view its associated releases
+- **Releases modal** displays:
+  - Release title with magnet link icon
+  - File size (formatted in GB/MB)
+  - Seeder count with color-coded badges
+  - Source information
+  - Download status
+  - Blacklist status (toggleable)
+  - Last updated timestamp
+- **Blacklist toggle**: Click the blacklist button to toggle release status
+- **Magnet links**: Click the magnet icon to open the torrent link
+
+### Dark Mode
+- Toggle between light and dark themes
+- Persistent preference stored in browser
+- Optimized color scheme for both modes
+- Keyboard shortcut: `Ctrl+D`
+
+### Keyboard Shortcuts
+- `R`: Refresh data
+- `Ctrl+D`: Toggle dark mode
+- `?`: Show keyboard shortcuts help
+- `1-3`: Switch tabs (1=Pending, 2=Downloading, 3=Ignored)
+- `E`: Export current data
+
+### Notifications
+- Success, warning, and error notifications
+- Auto-dismiss after 5 seconds
+- Manual dismiss option
+- Positioned in top-right corner
 
 ## Configuration
 
-The web server uses the same configuration as the main Plex Debrid application. The database connection is automatically configured based on your existing settings.
+### Environment Variables
+- `HOST`: Server host (default: `0.0.0.0`)
+- `PORT`: Server port (default: `8008`)
+- `DEBUG`: Enable debug mode (default: `False`)
 
-### Server Options
+### Database Configuration
+The web interface automatically uses the same SQLite database as your Plex Debrid installation. No additional configuration is required.
 
-- `--host`: Host to bind to (default: 127.0.0.1)
-- `--port`: Port to bind to (default: 8008)
-- `--reload`: Enable auto-reload for development
-- `--debug`: Enable debug mode
+### Template Structure
+The web interface uses a template-based approach for better development experience:
 
-### Example
-
-```bash
-python web_server.py --host 0.0.0.0 --port 9000 --debug
-```
+- **`web/templates/dashboard.html`**: Main dashboard HTML template with embedded CSS and JavaScript
+- **`web/routes/static.py`**: Route handlers that serve the HTML templates
+- **Syntax Highlighting**: HTML templates can be viewed and edited with proper syntax highlighting in your IDE
+- **Separation of Concerns**: HTML/CSS/JS separated from Python code for easier maintenance
 
 ## Development
 
 ### Project Structure
-
 ```
 web/
-├── __init__.py          # Package initialization
-├── app.py              # FastAPI application
+├── __init__.py
+├── app.py                 # FastAPI application
 ├── routes/
-│   ├── __init__.py     # Routes package
-│   ├── api.py          # API endpoints
-│   └── static.py       # Static file serving
-└── static/             # Static files (CSS, JS, etc.)
+│   ├── __init__.py
+│   ├── api.py            # API endpoints
+│   └── static.py         # Static route handlers
+├── templates/
+│   └── dashboard.html    # Dashboard HTML template
+├── static/               # Static assets (CSS, JS, images)
+└── README.md            # This file
 ```
 
-### Adding New Endpoints
+### Running in Development Mode
+```bash
+python web_server.py --host 0.0.0.0 --port 8008 --reload --debug
+```
 
-1. Add new routes to `web/routes/api.py`
-2. Update the dashboard in `web/routes/static.py` if needed
-3. Test the API using the interactive docs at `/docs`
-
-### Database Integration
-
-The web interface uses the existing SQLite database and media tracking system. All data is read-only to ensure system stability.
+### Testing
+```bash
+python test_web_interface.py
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Database Connection Error**: Ensure the main application has been run at least once to initialize the database
-2. **Port Already in Use**: Change the port using `--port` parameter
-3. **Import Errors**: Make sure all dependencies are installed with `pip install -r requirements.txt`
+**Database Connection Error**:
+- Ensure Plex Debrid is properly configured
+- Check that the SQLite database file exists
+- Verify file permissions
+
+**Port Already in Use**:
+- Change the port: `python web_server.py --port 8009`
+- Kill existing process: `lsof -ti:8008 | xargs kill`
+
+**Import Errors**:
+- Activate the correct virtual environment
+- Install required dependencies: `pip install -r requirements.txt`
+
+**Auto-refresh Not Working**:
+- Check browser console for JavaScript errors
+- Ensure no ad blockers are interfering
+- Verify network connectivity
+
+### Debug Mode
+Enable debug mode for detailed error messages:
+```bash
+python web_server.py --debug
+```
 
 ### Logs
+Check the terminal output for detailed logs and error messages.
 
-The web server logs are displayed in the console. For debugging, use the `--debug` flag for more verbose output.
+## Browser Compatibility
 
-## Security Notes
+- **Chrome/Chromium**: 80+
+- **Firefox**: 75+
+- **Safari**: 13+
+- **Edge**: 80+
 
-- The web interface is designed for local network use
-- No authentication is implemented in this basic version
-- Consider using a reverse proxy (nginx) for production deployments
-- The API provides read-only access to media status data
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## License
+
+This project is part of Plex Debrid and follows the same license terms.

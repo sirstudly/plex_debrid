@@ -14,7 +14,7 @@ def _ensure_dir(path: str) -> None:
 
 
 def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3") -> str:
-    """Initialize the SQLite database and ensure the media tables exist.
+    """Initialize the SQLite database and ensure all tables and views exist.
 
     Args:
         db_dir: Directory to place the database file. Defaults to './store'.
@@ -39,103 +39,14 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
             except Exception:
                 pass
         _connection = sqlite3.connect(db_file, check_same_thread=False)
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_movie (
-                guid TEXT PRIMARY KEY,
-                title TEXT,
-                year INTEGER,
-                imdb TEXT,
-                tmdb TEXT,
-                tvdb TEXT,
-                released INTEGER,
-                collected INTEGER,
-                watched INTEGER,
-                downloading INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                watchlisted_at TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_show (
-                guid TEXT PRIMARY KEY,
-                leaf_count INTEGER,
-                child_count INTEGER,
-                title TEXT,
-                year INTEGER,
-                public_pages_url TEXT,
-                imdb TEXT,
-                tmdb TEXT,
-                tvdb TEXT,
-                released INTEGER,
-                collected INTEGER,
-                watched INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                watchlisted_at TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_season (
-                guid TEXT PRIMARY KEY,
-                parent_title TEXT,
-                title TEXT,
-                parent_guid TEXT,
-                year INTEGER,
-                leaf_count INTEGER,
-                idx INTEGER,
-                collected INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_episode (
-                guid TEXT PRIMARY KEY,
-                grandparent_title TEXT,
-                parent_title TEXT,
-                title TEXT,
-                parent_guid TEXT,
-                parent_index INTEGER,
-                idx INTEGER,
-                year INTEGER,
-                collected INTEGER,
-                downloading INTEGER,
-                ignored INTEGER,
-                watchlisted_by TEXT,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        _connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS media_release (
-                guid TEXT NOT NULL,
-                title TEXT,
-                size REAL,
-                link TEXT,
-                hash TEXT,
-                seeders INTEGER,
-                source TEXT,
-                downloaded INTEGER,
-                blacklisted INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                PRIMARY KEY (guid, hash)
-            )
-            """
-        )
-        # No additional indices required currently
+        
+        # Load and execute the comprehensive database setup script
+        setup_script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database_setup.sql')
+        with open(setup_script_path, 'r') as f:
+            setup_script = f.read()
+        _connection.executescript(setup_script)
         _connection.commit()
+
         _db_path = db_file
 
     return db_file
@@ -208,20 +119,26 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
         except Exception:
             seeders = None
         source = getattr(release, 'source', None)
-        downloaded_int = 1 if downloaded else 0
+        
+        # Determine status based on downloaded flag
+        status = 'downloaded' if downloaded else 'pending'
 
         conn.execute(
             """
             INSERT INTO media_release (
-                guid, title, size, link, hash, seeders, source, downloaded
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                guid, title, size, link, hash, seeders, source, status, requested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guid, hash) DO UPDATE SET
                 title=excluded.title,
                 size=excluded.size,
                 link=excluded.link,
                 seeders=excluded.seeders,
                 source=excluded.source,
-                downloaded=MAX(media_release.downloaded, excluded.downloaded),
+                status=CASE 
+                    WHEN excluded.status = 'downloaded' THEN 'downloaded'
+                    WHEN media_release.status = 'downloaded' THEN 'downloaded'
+                    ELSE excluded.status
+                END,
                 updated_at=datetime('now')
             """,
             (
@@ -232,7 +149,8 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
                 None if hash_value is None else str(hash_value),
                 seeders,
                 None if source is None else str(source),
-                downloaded_int,
+                status,
+                None,  # requested_at - default to None for auto-discovered releases
             ),
         )
         conn.commit()
@@ -245,7 +163,9 @@ def mark_release_downloaded(media_obj, release) -> None:
     upsert_release(media_obj, release, downloaded=True)
 
 
-def update_db(media_obj, library_list) -> None:
+
+
+def update_db(media_obj, library_list, source=None) -> None:
     """Upsert current media status for movies, shows, seasons, and episodes.
 
     Movies: upsert into media_movie (with imdb/tmdb/tvdb, booleans, ignored).
@@ -308,6 +228,16 @@ def update_db(media_obj, library_list) -> None:
         except Exception:
             ignored = 0
 
+        # Determine source if not provided
+        if source is None:
+            try:
+                if hasattr(media_obj, 'watchlist') and hasattr(media_obj.watchlist, '__module__'):
+                    source = media_obj.watchlist.__module__.split('.')[-1]
+                else:
+                    source = 'plex'  # Default fallback
+            except Exception:
+                source = 'plex'  # Default fallback
+
         # Determine unique key
         key_guid = None
         if guid is not None and str(guid).strip() != "":
@@ -325,8 +255,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
             """
             INSERT INTO media_movie (
-                guid, title, year, imdb, tmdb, tvdb, released, collected, watched, downloading, ignored, watchlisted_by, watchlisted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                guid, title, year, imdb, tmdb, tvdb, released, collected, watched, downloading, ignored, watchlisted_by, watchlisted_at, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guid) DO UPDATE SET
                 title=excluded.title,
                 year=excluded.year,
@@ -340,6 +270,7 @@ def update_db(media_obj, library_list) -> None:
                 ignored=excluded.ignored,
                 watchlisted_by=excluded.watchlisted_by,
                 watchlisted_at=excluded.watchlisted_at,
+                source=excluded.source,
                 updated_at=datetime('now')
             """,
                 (
@@ -356,14 +287,15 @@ def update_db(media_obj, library_list) -> None:
                     ignored,
                     watchlisted_by,
                     _convert_watchlisted_at(media_obj),
+                    source,
                 ),
             )
         elif media_type == 'show':
             conn.execute(
                 """
                 INSERT INTO media_show (
-                    guid, leaf_count, child_count, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, leaf_count, child_count, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     leaf_count=excluded.leaf_count,
                     child_count=excluded.child_count,
@@ -379,6 +311,7 @@ def update_db(media_obj, library_list) -> None:
                     watched=excluded.watched,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
+                    source=excluded.source,
                     updated_at=datetime('now')
                 """,
                 (
@@ -397,6 +330,7 @@ def update_db(media_obj, library_list) -> None:
                     watched,
                     ignored,
                     watchlisted_by,
+                    source,
                 ),
             )
         elif media_type == 'season':
@@ -407,8 +341,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_season (
-                    guid, parent_title, title, parent_guid, year, leaf_count, idx, collected, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, parent_title, title, parent_guid, year, leaf_count, idx, collected, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     parent_title=excluded.parent_title,
                     title=excluded.title,
@@ -419,6 +353,7 @@ def update_db(media_obj, library_list) -> None:
                     collected=excluded.collected,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
+                    source=excluded.source,
                     updated_at=datetime('now')
                 """,
                 (
@@ -432,6 +367,7 @@ def update_db(media_obj, library_list) -> None:
                     collected,
                     ignored,
                     watchlisted_by,
+                    source,
                 ),
             )
         elif media_type == 'episode':
@@ -443,8 +379,8 @@ def update_db(media_obj, library_list) -> None:
             conn.execute(
                 """
                 INSERT INTO media_episode (
-                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, collected, downloading, ignored, watchlisted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, grandparent_title, parent_title, title, parent_guid, parent_index, idx, year, collected, downloading, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     grandparent_title=excluded.grandparent_title,
                     parent_title=excluded.parent_title,
@@ -457,6 +393,7 @@ def update_db(media_obj, library_list) -> None:
                     downloading=excluded.downloading,
                     ignored=excluded.ignored,
                     watchlisted_by=excluded.watchlisted_by,
+                    source=excluded.source,
                     updated_at=datetime('now')
                 """,
                 (
@@ -472,6 +409,7 @@ def update_db(media_obj, library_list) -> None:
                     downloading_flag,
                     ignored,
                     watchlisted_by,
+                    source,
                 ),
             )
         conn.commit()

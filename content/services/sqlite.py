@@ -152,5 +152,140 @@ class library():
                 ui_print("[sqlite] error: couldnt sync from database: " + str(e), debug=ui_settings.debug)
 
 
+class watchlist(classes.watchlist):
+    """Local SQLite-based watchlist for user-requested releases."""
+    
+    def __init__(self):
+        self.data = []
+        self._load_local_requests()
+    
+    def _load_local_requests(self):
+        """Load locally requested items from the database."""
+        try:
+            ui_print('[sqlite] loading local requests from database...', debug=ui_settings.debug)
+            
+            # Get database connection
+            conn = sqlite_store._get_connection()
+            
+            # Query all local requests that are pending
+            cursor = conn.execute("""
+                SELECT mr.guid, mr.hash, mr.title, mr.requested_at,
+                       m.title as media_title, m.year, m.imdb, m.tmdb, m.tvdb
+                FROM media_release mr
+                LEFT JOIN media_movie m ON mr.guid = m.guid
+                WHERE mr.status = 'pending' AND mr.requested_at IS NOT NULL
+                ORDER BY mr.requested_at DESC
+            """)
+            
+            results = cursor.fetchall()
+            
+            for row in results:
+                guid, release_hash, release_title, requested_at, media_title, year, imdb, tmdb, tvdb = row
+                
+                # Create a media object for the local request
+                media_obj = type('LocalRequest', (), {
+                    'guid': guid,
+                    'type': 'movie',  # We'll need to determine this from the media tables
+                    'title': media_title or release_title,
+                    'year': year,
+                    'watchlistedAt': time.mktime(time.strptime(requested_at, '%Y-%m-%d %H:%M:%S')) if requested_at else time.time(),
+                    'user': [['Local User', 'local']],  # Local user identifier
+                    'query': lambda: f"movie:{media_title or release_title} ({year})" if media_title and year else f"movie:{release_title}",
+                    'EID': [],
+                    'local_request_hash': release_hash,
+                    'local_request_title': release_title
+                })()
+                
+                # Add EID if available
+                if imdb:
+                    media_obj.EID.append(f'imdb://{imdb}')
+                if tmdb:
+                    media_obj.EID.append(f'tmdb://{tmdb}')
+                if tvdb:
+                    media_obj.EID.append(f'tvdb://{tvdb}')
+                
+                self.data.append(media_obj)
+            
+            ui_print(f'[sqlite] loaded {len(self.data)} local requests from database', debug=ui_settings.debug)
+            
+        except Exception as e:
+            ui_print("[sqlite] error: couldnt load local requests: " + str(e), debug=ui_settings.debug)
+    
+    def update(self):
+        """Check for new local requests in the database."""
+        try:
+            # Get database connection
+            conn = sqlite_store._get_connection()
+            
+            # Query for new local requests
+            cursor = conn.execute("""
+                SELECT mr.guid, mr.hash, mr.title, mr.requested_at,
+                       m.title as media_title, m.year, m.imdb, m.tmdb, m.tvdb
+                FROM media_release mr
+                LEFT JOIN media_movie m ON mr.guid = m.guid
+                WHERE mr.status = 'pending' AND mr.requested_at IS NOT NULL
+                ORDER BY mr.requested_at DESC
+            """)
+            
+            results = cursor.fetchall()
+            new_requests = []
+            
+            for row in results:
+                guid, release_hash, release_title, requested_at, media_title, year, imdb, tmdb, tvdb = row
+                
+                # Check if this request is already in our data
+                existing = next((item for item in self.data if item.guid == guid and getattr(item, 'local_request_hash', None) == release_hash), None)
+                
+                if not existing:
+                    # Create a media object for the new local request
+                    media_obj = type('LocalRequest', (), {
+                        'guid': guid,
+                        'type': 'movie',  # We'll need to determine this from the media tables
+                        'title': media_title or release_title,
+                        'year': year,
+                        'watchlistedAt': time.mktime(time.strptime(requested_at, '%Y-%m-%d %H:%M:%S')) if requested_at else time.time(),
+                        'user': [['Local User', 'local']],  # Local user identifier
+                        'query': lambda: f"movie:{media_title or release_title} ({year})" if media_title and year else f"movie:{release_title}",
+                        'EID': [],
+                        'local_request_hash': release_hash,
+                        'local_request_title': release_title
+                    })()
+                    
+                    # Add EID if available
+                    if imdb:
+                        media_obj.EID.append(f'imdb://{imdb}')
+                    if tmdb:
+                        media_obj.EID.append(f'tmdb://{tmdb}')
+                    if tvdb:
+                        media_obj.EID.append(f'tvdb://{tvdb}')
+                    
+                    new_requests.append(media_obj)
+                    ui_print(f'[sqlite] found new local request: {media_obj.query()}')
+            
+            # Add new requests to data
+            self.data.extend(new_requests)
+            
+            # Remove processed requests
+            self.data = [item for item in self.data if not self._is_request_processed(item)]
+            
+            return len(new_requests) > 0
+            
+        except Exception as e:
+            ui_print("[sqlite] error: couldnt update local requests: " + str(e), debug=ui_settings.debug)
+            return False
+    
+    def _is_request_processed(self, item):
+        """Check if a local request has been processed."""
+        try:
+            conn = sqlite_store._get_connection()
+            cursor = conn.execute(
+                "SELECT status FROM media_release WHERE guid = ? AND hash = ?",
+                (item.guid, getattr(item, 'local_request_hash', ''))
+            )
+            result = cursor.fetchone()
+            return result and result[0] != 'pending'
+        except:
+            return False
+
 def match(self):
     return None

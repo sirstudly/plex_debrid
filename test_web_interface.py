@@ -1,118 +1,198 @@
 #!/usr/bin/env python3
 """
-Test script for the Plex Debrid Web Interface
+Test the web interface with the simplified API
 """
 
+import requests
+import json
 import sys
-import os
-
-# Add the current directory to the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-def test_imports():
-    """Test that all modules can be imported"""
-    print("Testing imports...")
-    
-    try:
-        from web.app import app
-        print("✓ Web app imports successfully")
-    except Exception as e:
-        print(f"✗ Web app import failed: {e}")
-        return False
-    
-    try:
-        from web.routes.api import router
-        print("✓ API routes import successfully")
-    except Exception as e:
-        print(f"✗ API routes import failed: {e}")
-        return False
-    
-    try:
-        from web.routes.static import router as static_router
-        print("✓ Static routes import successfully")
-    except Exception as e:
-        print(f"✗ Static routes import failed: {e}")
-        return False
-    
-    return True
-
-def test_database_connection():
-    """Test database connection"""
-    print("\nTesting database connection...")
-    
-    try:
-        from store.sqlite_store import _get_connection
-        conn = _get_connection()
-        print("✓ Database connection successful")
-        
-        # Test if tables exist
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'media_%'")
-        tables = cursor.fetchall()
-        print(f"✓ Found {len(tables)} media tables: {[table[0] for table in tables]}")
-        
-        return True
-    except Exception as e:
-        print(f"✗ Database connection failed: {e}")
-        return False
 
 def test_api_endpoints():
-    """Test that API endpoints can be created"""
-    print("\nTesting API endpoints...")
+    """Test all API endpoints"""
+    base_url = "http://localhost:8008"
+    
+    print("Testing Web Interface with Simplified API")
+    print("=" * 50)
+    
+    # Test health endpoint
+    try:
+        response = requests.get(f"{base_url}/health")
+        if response.status_code == 200:
+            print("✓ Health endpoint working")
+        else:
+            print("✗ Health endpoint failed")
+            return False
+    except Exception as e:
+        print(f"✗ Health endpoint error: {e}")
+        return False
+    
+    # Test stats endpoint
+    try:
+        response = requests.get(f"{base_url}/api/stats")
+        if response.status_code == 200:
+            stats = response.json()
+            print(f"✓ Stats endpoint working - {stats['pending']['total']} pending items")
+        else:
+            print("✗ Stats endpoint failed")
+            return False
+    except Exception as e:
+        print(f"✗ Stats endpoint error: {e}")
+        return False
+    
+    # Test pending endpoint
+    try:
+        response = requests.get(f"{base_url}/api/pending?page_size=3")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Pending endpoint working - {len(data['items'])} items returned")
+            if data['items']:
+                first_item = data['items'][0]
+                print(f"  - First item: {first_item['title']} ({first_item['media_type']}) - {first_item['status']}")
+        else:
+            print("✗ Pending endpoint failed")
+            return False
+    except Exception as e:
+        print(f"✗ Pending endpoint error: {e}")
+        return False
+    
+    # Test filtering
+    try:
+        response = requests.get(f"{base_url}/api/pending?media_type=movie&page_size=2")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Filtering working - {len(data['items'])} movie items returned")
+        else:
+            print("✗ Filtering failed")
+            return False
+    except Exception as e:
+        print(f"✗ Filtering error: {e}")
+        return False
+    
+    # Test search
+    try:
+        response = requests.get(f"{base_url}/api/pending?search=Predator&page_size=2")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Search working - {len(data['items'])} items with 'Predator' found")
+        else:
+            print("✗ Search failed")
+            return False
+    except Exception as e:
+        print(f"✗ Search error: {e}")
+        return False
+    
+    # Test year filter
+    try:
+        response = requests.get(f"{base_url}/api/pending?year=2025&page_size=2")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Year filter working - {len(data['items'])} items from 2025 found")
+        else:
+            print("✗ Year filter failed")
+            return False
+    except Exception as e:
+        print(f"✗ Year filter error: {e}")
+        return False
+    
+    # Test downloading endpoint
+    try:
+        response = requests.get(f"{base_url}/api/downloading?page_size=2")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Downloading endpoint working - {len(data['items'])} items returned")
+        else:
+            print("✗ Downloading endpoint failed")
+            return False
+    except Exception as e:
+        print(f"✗ Downloading endpoint error: {e}")
+        return False
+    
+    # Test ignored endpoint
+    try:
+        response = requests.get(f"{base_url}/api/ignored?page_size=2")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Ignored endpoint working - {len(data['items'])} items returned")
+        else:
+            print("✗ Ignored endpoint failed")
+            return False
+    except Exception as e:
+        print(f"✗ Ignored endpoint error: {e}")
+        return False
+    
+    # Test new /media endpoint
+    try:
+        response = requests.get(f"{base_url}/api/media?status=collected&page_size=2")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✓ Media endpoint working - {len(data['items'])} collected items returned")
+        else:
+            print("✗ Media endpoint failed")
+            return False
+    except Exception as e:
+        print(f"✗ Media endpoint error: {e}")
+        return False
+    
+    print("\n🎉 All API endpoints working correctly!")
+    return True
+
+def test_data_structure():
+    """Test that the data structure is consistent"""
+    print("\n--- Testing Data Structure ---")
     
     try:
-        from web.routes.api import router
-        routes = [route for route in router.routes]
-        print(f"✓ Found {len(routes)} API routes")
-        
-        # Check for specific endpoints
-        endpoint_paths = [route.path for route in routes]
-        expected_endpoints = ['/pending', '/pending/movies', '/pending/shows', '/pending/episodes', '/downloading', '/ignored', '/stats']
-        
-        for endpoint in expected_endpoints:
-            if endpoint in endpoint_paths:
-                print(f"✓ Found endpoint: {endpoint}")
+        response = requests.get("http://localhost:8008/api/pending?page_size=1")
+        if response.status_code == 200:
+            data = response.json()
+            if data['items']:
+                item = data['items'][0]
+                required_fields = ['media_type', 'title', 'status', 'watchlisted_by', 'watchlisted_at']
+                missing_fields = [field for field in required_fields if field not in item]
+                
+                if missing_fields:
+                    print(f"✗ Missing fields: {missing_fields}")
+                    return False
+                else:
+                    print("✓ All required fields present")
+                    print(f"  - media_type: {item['media_type']}")
+                    print(f"  - status: {item['status']}")
+                    print(f"  - title: {item['title']}")
+                    return True
             else:
-                print(f"✗ Missing endpoint: {endpoint}")
+                print("✗ No items returned")
                 return False
-        
-        return True
+        else:
+            print("✗ API request failed")
+            return False
     except Exception as e:
-        print(f"✗ API endpoints test failed: {e}")
+        print(f"✗ Data structure test error: {e}")
         return False
 
 def main():
-    """Run all tests"""
-    print("Plex Debrid Web Interface Test")
-    print("=" * 40)
+    """Main function"""
+    print("Testing Web Interface with Simplified API")
+    print("=" * 50)
     
-    tests = [
-        test_imports,
-        test_database_connection,
-        test_api_endpoints
-    ]
+    # Test API endpoints
+    if not test_api_endpoints():
+        print("\n✗ API endpoint tests failed")
+        sys.exit(1)
     
-    passed = 0
-    total = len(tests)
+    # Test data structure
+    if not test_data_structure():
+        print("\n✗ Data structure tests failed")
+        sys.exit(1)
     
-    for test in tests:
-        if test():
-            passed += 1
-        print()
-    
-    print("=" * 40)
-    print(f"Tests passed: {passed}/{total}")
-    
-    if passed == total:
-        print("✓ All tests passed! Web interface is ready to use.")
-        print("\nTo start the web server:")
-        print("1. Activate your virtual environment: source venv_3.12/bin/activate")
-        print("2. Run: python web_server.py")
-        print("3. Open: http://127.0.0.1:8008/dashboard")
-    else:
-        print("✗ Some tests failed. Please check the errors above.")
-        return 1
-    
-    return 0
+    print("\n🎉 All tests passed! The web interface is ready to use.")
+    print("\nYou can now access the dashboard at:")
+    print("  http://localhost:8008")
+    print("\nFeatures available:")
+    print("  - Real-time data from v_media view")
+    print("  - Advanced filtering (type, status, source, year, search)")
+    print("  - Pagination and sorting")
+    print("  - Auto-refresh and dark mode")
+    print("  - Export functionality")
+    print("  - Keyboard shortcuts")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
