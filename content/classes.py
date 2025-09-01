@@ -1562,6 +1562,12 @@ class media:
                 ver_dld = False
                 for release in copy.deepcopy(self.Releases):
                     sqlite_store.upsert_release(self, release, downloaded=False)
+
+                    # Check if this release is blacklisted - if so, skip it
+                    if sqlite_store.is_release_blacklisted(self, release):
+                        ui_print(f"[debrid_download] skipping blacklisted release: {release.title}", ui_settings.debug)
+                        continue
+
                     self.Releases = [release,]
                     if (hasattr(release, "cached") and len(release.cached) > 0) or (hasattr(release, "maybe_cached") and len(release.maybe_cached) > 0):
                         if debrid.download(self, stream=True, force=force):
