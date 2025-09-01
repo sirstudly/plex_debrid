@@ -88,8 +88,8 @@ CREATE TABLE IF NOT EXISTS media_release (
     hash TEXT,
     seeders INTEGER,
     source TEXT,
-    downloaded INTEGER,
-    blacklisted INTEGER NOT NULL DEFAULT 0,
+    requested_at TEXT,
+    status TEXT DEFAULT 'pending',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (guid, hash)
 );
@@ -244,6 +244,11 @@ CREATE INDEX IF NOT EXISTS idx_media_episode_watchlisted_by ON media_episode(wat
 CREATE INDEX IF NOT EXISTS idx_media_episode_updated_at ON media_episode(updated_at);
 CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 
+-- Indexes for media_release table
+CREATE INDEX IF NOT EXISTS idx_media_release_status ON media_release(status);
+CREATE INDEX IF NOT EXISTS idx_media_release_requested_at ON media_release(requested_at);
+CREATE INDEX IF NOT EXISTS idx_media_release_guid ON media_release(guid);
+
 -- ============================================================================
 -- USAGE EXAMPLES
 -- ============================================================================
@@ -268,6 +273,9 @@ CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 -- Get collected items:
 -- SELECT * FROM v_media WHERE status = 'collected';
 --
+-- Get locally requested releases:
+-- SELECT * FROM media_release WHERE status = 'pending' AND requested_at IS NOT NULL;
+--
 -- Get items by source:
 -- SELECT * FROM v_media WHERE watchlisted_by LIKE '%plex%';
 --
@@ -282,5 +290,6 @@ CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 --     SUM(CASE WHEN status = 'pending' AND media_type = 'movie' THEN 1 ELSE 0 END) as pending_movies,
 --     SUM(CASE WHEN status = 'pending' AND media_type = 'show' THEN 1 ELSE 0 END) as pending_shows,
 --     SUM(CASE WHEN status = 'pending' AND media_type = 'season' THEN 1 ELSE 0 END) as pending_seasons,
---     SUM(CASE WHEN status = 'pending' AND media_type = 'episode' THEN 1 ELSE 0 END) as pending_episodes
+--     SUM(CASE WHEN status = 'pending' AND media_type = 'episode' THEN 1 ELSE 0 END) as pending_episodes,
+--     (SELECT COUNT(*) FROM media_release WHERE status = 'pending' AND requested_at IS NOT NULL) as local_requests
 -- FROM v_media;

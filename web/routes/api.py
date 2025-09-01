@@ -289,6 +289,12 @@ async def get_statistics() -> Dict[str, Any]:
         cursor = conn.execute(stats_query)
         row = cursor.fetchone()
         
+        # Get local requests count
+        local_requests_cursor = conn.execute(
+            "SELECT COUNT(*) FROM media_release WHERE status = 'pending' AND requested_at IS NOT NULL"
+        )
+        local_requests_count = local_requests_cursor.fetchone()[0]
+        
         if row:
             stats = {
                 "pending": {
@@ -316,6 +322,9 @@ async def get_statistics() -> Dict[str, Any]:
                     "seasons": row[12],
                     "episodes": row[13],
                     "total": row[10] + row[11] + row[12] + row[13]
+                },
+                "local_requests": {
+                    "total": local_requests_count
                 }
             }
         else:
@@ -323,7 +332,8 @@ async def get_statistics() -> Dict[str, Any]:
                 "pending": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
                 "downloading": {"movies": 0, "episodes": 0, "total": 0},
                 "ignored": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
-                "collected": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0}
+                "collected": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
+                "local_requests": {"total": local_requests_count}
             }
         
         return stats
@@ -343,8 +353,8 @@ async def get_releases_for_media(guid: str = Query(..., description="Media item 
                 size,
                 seeders,
                 source,
-                downloaded,
-                blacklisted,
+                status,
+                requested_at,
                 link,
                 hash,
                 updated_at
@@ -360,9 +370,6 @@ async def get_releases_for_media(guid: str = Query(..., description="Media item 
         releases = []
         for row in rows:
             release = dict(zip(columns, row))
-            # Convert boolean integers to actual booleans
-            release['downloaded'] = bool(release['downloaded'])
-            release['blacklisted'] = bool(release['blacklisted'])
             releases.append(release)
         
         return {
@@ -380,9 +387,9 @@ async def toggle_blacklist_status(guid: str = Query(..., description="Media item
     conn = get_db_connection()
     
     try:
-        # First, get the current blacklist status
+        # First, get the current status
         cursor = conn.execute(
-            "SELECT blacklisted FROM media_release WHERE guid = ? AND hash = ?",
+            "SELECT status FROM media_release WHERE guid = ? AND hash = ?",
             (guid, hash_value)
         )
         row = cursor.fetchone()
@@ -390,24 +397,174 @@ async def toggle_blacklist_status(guid: str = Query(..., description="Media item
         if not row:
             raise HTTPException(status_code=404, detail="Release not found")
         
-        current_status = bool(row[0])
-        new_status = not current_status
+        current_status = row[0]
+        new_status = 'blacklisted' if current_status != 'blacklisted' else 'pending'
         
-        # Update the blacklist status
+        # Update the status
         conn.execute(
-            "UPDATE media_release SET blacklisted = ?, updated_at = datetime('now') WHERE guid = ? AND hash = ?",
-            (1 if new_status else 0, guid, hash_value)
+            "UPDATE media_release SET status = ?, updated_at = datetime('now') WHERE guid = ? AND hash = ?",
+            (new_status, guid, hash_value)
         )
         conn.commit()
         
         return {
             "guid": guid,
             "hash": hash_value,
-            "blacklisted": new_status,
-            "message": f"Release {'blacklisted' if new_status else 'unblacklisted'} successfully"
+            "status": new_status,
+            "message": f"Release {'blacklisted' if new_status == 'blacklisted' else 'unblacklisted'} successfully"
         }
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
+
+@router.post("/releases/queue")
+async def queue_release_for_download(
+    guid: str = Query(..., description="Media item GUID"), 
+    hash_value: str = Query(..., description="Release hash"),
+    release_title: str = Query(..., description="Release title")
+) -> Dict[str, Any]:
+    """Queue a release for download via local request"""
+    conn = get_db_connection()
+    
+    try:
+        # Check if this release is already queued
+        cursor = conn.execute(
+            "SELECT status FROM media_release WHERE guid = ? AND hash = ?",
+            (guid, hash_value)
+        )
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Release not found")
+        
+        if row[0] == 'pending' and cursor.execute(
+            "SELECT requested_at FROM media_release WHERE guid = ? AND hash = ?",
+            (guid, hash_value)
+        ).fetchone()[0] is not None:
+            raise HTTPException(status_code=409, detail="Release is already queued for download")
+        
+        # Update the release to mark it as locally requested
+        conn.execute(
+            "UPDATE media_release SET status = 'pending', requested_at = datetime('now'), updated_at = datetime('now') WHERE guid = ? AND hash = ?",
+            (guid, hash_value)
+        )
+        
+        conn.commit()
+        
+        return {
+            "guid": guid,
+            "hash": hash_value,
+            "title": release_title,
+            "status": "queued",
+            "message": f"Release '{release_title}' queued for download successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to queue release: {str(e)}")
+
+@router.delete("/releases/queue")
+async def remove_release_from_queue(
+    guid: str = Query(..., description="Media item GUID"), 
+    hash_value: str = Query(..., description="Release hash")
+) -> Dict[str, Any]:
+    """Remove a release from the download queue"""
+    conn = get_db_connection()
+    
+    try:
+        # Get the release details first
+        cursor = conn.execute(
+            "SELECT title, requested_at FROM media_release WHERE guid = ? AND hash = ?",
+            (guid, hash_value)
+        )
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Release not found")
+        
+        release_title, requested_at = row
+        
+        if requested_at is None:
+            raise HTTPException(status_code=404, detail="Release is not queued for download")
+        
+        # Update the release to remove the local request
+        conn.execute(
+            "UPDATE media_release SET requested_at = NULL, updated_at = datetime('now') WHERE guid = ? AND hash = ?",
+            (guid, hash_value)
+        )
+        
+        conn.commit()
+        
+        return {
+            "guid": guid,
+            "hash": hash_value,
+            "title": release_title,
+            "status": "removed",
+            "message": f"Release '{release_title}' removed from download queue"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove release from queue: {str(e)}")
+
+@router.get("/releases/queue")
+async def get_queued_releases(
+    page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
+    page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
+) -> Dict[str, Any]:
+    """Get all queued releases"""
+    conn = get_db_connection()
+    
+    try:
+        # Get total count
+        count_cursor = conn.execute(
+            "SELECT COUNT(*) FROM media_release WHERE status = 'pending' AND requested_at IS NOT NULL"
+        )
+        total_count = count_cursor.fetchone()[0]
+        
+        # Calculate pagination
+        offset = (page - 1) * page_size
+        
+        # Get queued releases with media info
+        query = """
+            SELECT mr.guid, mr.hash, mr.title, mr.requested_at,
+                   m.title as media_title, m.year
+            FROM media_release mr
+            LEFT JOIN media_movie m ON mr.guid = m.guid
+            WHERE mr.status = 'pending' AND mr.requested_at IS NOT NULL
+            ORDER BY mr.requested_at DESC
+            LIMIT ? OFFSET ?
+        """
+        
+        cursor = conn.execute(query, (page_size, offset))
+        columns = [description[0] for description in cursor.description]
+        rows = cursor.fetchall()
+        
+        items = []
+        for row in rows:
+            item = dict(zip(columns, row))
+            items.append(item)
+        
+        # Calculate pagination info
+        total_pages = (total_count + page_size - 1) // page_size
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        return {
+            "items": items,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")

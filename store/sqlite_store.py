@@ -119,20 +119,26 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
         except Exception:
             seeders = None
         source = getattr(release, 'source', None)
-        downloaded_int = 1 if downloaded else 0
+        
+        # Determine status based on downloaded flag
+        status = 'downloaded' if downloaded else 'pending'
 
         conn.execute(
             """
             INSERT INTO media_release (
-                guid, title, size, link, hash, seeders, source, downloaded
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                guid, title, size, link, hash, seeders, source, status, requested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guid, hash) DO UPDATE SET
                 title=excluded.title,
                 size=excluded.size,
                 link=excluded.link,
                 seeders=excluded.seeders,
                 source=excluded.source,
-                downloaded=MAX(media_release.downloaded, excluded.downloaded),
+                status=CASE 
+                    WHEN excluded.status = 'downloaded' THEN 'downloaded'
+                    WHEN media_release.status = 'downloaded' THEN 'downloaded'
+                    ELSE excluded.status
+                END,
                 updated_at=datetime('now')
             """,
             (
@@ -143,7 +149,8 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
                 None if hash_value is None else str(hash_value),
                 seeders,
                 None if source is None else str(source),
-                downloaded_int,
+                status,
+                None,  # requested_at - default to None for auto-discovered releases
             ),
         )
         conn.commit()

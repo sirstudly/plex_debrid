@@ -1088,7 +1088,7 @@
             tableWrapper.style.maxHeight = '60vh';
             tableWrapper.style.overflowY = 'auto';
             
-            const headers = ['Title', 'Size', 'Seeders', 'Source', 'Downloaded', 'Blacklisted', 'Updated'];
+            const headers = ['Title', 'Size', 'Seeders', 'Source', 'Status', 'Blacklisted', 'Queue', 'Updated'];
             const thead = document.createElement('thead');
             const headerRow = document.createElement('tr');
             headers.forEach((header, index) => {
@@ -1106,11 +1106,13 @@
                     th.style.width = '80px';
                 } else if (index === 3) { // Source column
                     th.style.width = '100px';
-                } else if (index === 4) { // Downloaded column
+                } else if (index === 4) { // Status column
                     th.style.width = '100px';
                 } else if (index === 5) { // Blacklisted column
                     th.style.width = '100px';
-                } else if (index === 6) { // Updated column
+                } else if (index === 6) { // Queue column
+                    th.style.width = '100px';
+                } else if (index === 7) { // Updated column
                     th.style.width = '120px';
                 }
                 
@@ -1166,22 +1168,39 @@
                 sourceBadge.textContent = release.source || 'Unknown';
                 sourceCell.appendChild(sourceBadge);
                 
-                // Downloaded
-                const downloadedCell = document.createElement('td');
-                downloadedCell.style.whiteSpace = 'nowrap';
-                const downloadedBadge = document.createElement('span');
-                downloadedBadge.className = 'badge ' + (release.downloaded ? 'bg-success' : 'bg-secondary');
-                downloadedBadge.textContent = release.downloaded ? 'Yes' : 'No';
-                downloadedCell.appendChild(downloadedBadge);
+                // Status
+                const statusCell = document.createElement('td');
+                statusCell.style.whiteSpace = 'nowrap';
+                const statusBadge = document.createElement('span');
+                const statusColors = {
+                    'pending': 'bg-warning',
+                    'downloading': 'bg-info',
+                    'downloaded': 'bg-success',
+                    'failed': 'bg-danger',
+                    'blacklisted': 'bg-secondary'
+                };
+                statusBadge.className = 'badge ' + (statusColors[release.status] || 'bg-secondary');
+                statusBadge.textContent = release.status || 'Unknown';
+                statusCell.appendChild(statusBadge);
                 
                 // Blacklisted (toggleable)
                 const blacklistedCell = document.createElement('td');
                 blacklistedCell.style.whiteSpace = 'nowrap';
                 const blacklistBtn = document.createElement('button');
-                blacklistBtn.className = 'btn btn-sm ' + (release.blacklisted ? 'btn-danger' : 'btn-outline-secondary');
-                blacklistBtn.textContent = release.blacklisted ? 'Blacklisted' : 'Blacklist';
+                blacklistBtn.className = 'btn btn-sm ' + (release.status === 'blacklisted' ? 'btn-danger' : 'btn-outline-secondary');
+                blacklistBtn.textContent = release.status === 'blacklisted' ? 'Blacklisted' : 'Blacklist';
                 blacklistBtn.onclick = () => toggleBlacklist(release, blacklistBtn);
                 blacklistedCell.appendChild(blacklistBtn);
+                
+                // Queue Download (toggleable)
+                const queueCell = document.createElement('td');
+                queueCell.style.whiteSpace = 'nowrap';
+                const queueBtn = document.createElement('button');
+                const isQueued = release.requested_at !== null;
+                queueBtn.className = 'btn btn-sm ' + (isQueued ? 'btn-success' : 'btn-outline-primary');
+                queueBtn.innerHTML = isQueued ? '<i class="fas fa-check me-1"></i>Queued' : '<i class="fas fa-download me-1"></i>Queue';
+                queueBtn.onclick = () => toggleQueue(release, queueBtn);
+                queueCell.appendChild(queueBtn);
                 
                 // Updated
                 const updatedCell = document.createElement('td');
@@ -1192,8 +1211,9 @@
                 row.appendChild(sizeCell);
                 row.appendChild(seedersCell);
                 row.appendChild(sourceCell);
-                row.appendChild(downloadedCell);
+                row.appendChild(statusCell);
                 row.appendChild(blacklistedCell);
+                row.appendChild(queueCell);
                 row.appendChild(updatedCell);
                 
                 tbody.appendChild(row);
@@ -1218,11 +1238,11 @@
                 
                 if (response.ok) {
                     const data = await response.json();
-                    release.blacklisted = data.blacklisted;
+                    release.status = data.status;
                     
                     // Update button appearance
-                    button.className = 'btn btn-sm ' + (release.blacklisted ? 'btn-danger' : 'btn-outline-secondary');
-                    button.textContent = release.blacklisted ? 'Blacklisted' : 'Blacklist';
+                    button.className = 'btn btn-sm ' + (release.status === 'blacklisted' ? 'btn-danger' : 'btn-outline-secondary');
+                    button.textContent = release.status === 'blacklisted' ? 'Blacklisted' : 'Blacklist';
                     
                     showNotification(data.message, 'success');
                 } else {
@@ -1231,6 +1251,61 @@
                 }
             } catch (error) {
                 showNotification('Failed to toggle blacklist: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleQueue(release, button) {
+            try {
+                // Check if already queued by looking at requested_at field
+                const isQueued = release.requested_at !== null;
+                
+                if (isQueued) {
+                    // Remove from queue
+                    const response = await fetch(`/api/releases/queue?guid=${encodeURIComponent(currentMediaGuid)}&hash_value=${encodeURIComponent(release.hash || '')}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Update button appearance and release data
+                        button.className = 'btn btn-sm btn-outline-primary';
+                        button.innerHTML = '<i class="fas fa-download me-1"></i>Queue';
+                        release.requested_at = null;
+                        
+                        showNotification(data.message, 'success');
+                    } else {
+                        const error = await response.json();
+                        showNotification('Failed to remove from queue: ' + error.detail, 'error');
+                    }
+                } else {
+                    // Add to queue
+                    const response = await fetch(`/api/releases/queue?guid=${encodeURIComponent(currentMediaGuid)}&hash_value=${encodeURIComponent(release.hash || '')}&release_title=${encodeURIComponent(release.title || '')}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Update button appearance and release data
+                        button.className = 'btn btn-sm btn-success';
+                        button.innerHTML = '<i class="fas fa-check me-1"></i>Queued';
+                        release.requested_at = new Date().toISOString();
+                        
+                        showNotification(data.message, 'success');
+                    } else {
+                        const error = await response.json();
+                        showNotification('Failed to queue release: ' + error.detail, 'error');
+                    }
+                }
+            } catch (error) {
+                showNotification('Failed to toggle queue: ' + error.message, 'error');
             }
         }
 
