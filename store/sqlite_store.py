@@ -160,9 +160,57 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
 
 def mark_release_downloaded(media_obj, release) -> None:
     """Mark an existing or new release as downloaded for a media item."""
-    upsert_release(media_obj, release, downloaded=True)
+    try:
+        conn = _get_connection()
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return
+        hash_value = getattr(release, 'hash', None)
+        if hash_value is None:
+            return
+        
+        # Update the status to downloaded
+        conn.execute(
+            "UPDATE media_release SET status = 'downloaded', updated_at = datetime('now') WHERE guid = ? AND hash = ?",
+            (key_guid, str(hash_value))
+        )
+        conn.commit()
+    except Exception as e:
+        print("[sqlite] error: couldnt mark release as downloaded: " + str(e))
 
 
+def is_release_blacklisted(media_obj, release) -> bool:
+    """Check if a release is blacklisted in the database.
+    
+    Args:
+        media_obj: The media object (movie/episode) the release belongs to.
+        release: A release instance from releases.release with attributes.
+        
+    Returns:
+        True if the release is blacklisted, False otherwise.
+    """
+    try:
+        conn = _get_connection()
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return False
+        hash_value = getattr(release, 'hash', None)
+        if hash_value is None:
+            return False
+        
+        # Query the database for the release status
+        cursor = conn.execute(
+            "SELECT status FROM media_release WHERE guid = ? AND hash = ?",
+            (key_guid, str(hash_value))
+        )
+        result = cursor.fetchone()
+        
+        # Return True if the release is blacklisted
+        return result and result[0] == 'blacklisted'
+        
+    except Exception as e:
+        print("[sqlite] error: couldnt check release blacklist status: " + str(e))
+        return False
 
 
 def update_db(media_obj, library_list, source=None) -> None:
