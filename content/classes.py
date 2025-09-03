@@ -917,6 +917,24 @@ class media:
         return False
 
     def watch(self):
+        """
+        Implements a retry mechanism for failed downloads by managing an ignore queue.
+
+        This function:
+        1. Calculates the maximum number of retries allowed from version triggers
+        2. Adds the current item to a temporary ignore queue for retry attempts
+        3. Tracks how many retry attempts have been made for each item
+        4. Moves items to permanent ignore status after all retries are exhausted
+
+        The retry system works by:
+        - Adding failed items to media.ignore_queue (temporary ignore)
+        - Incrementing retry counters on each failure
+        - Moving items to permanent ignore when retry limit is reached
+        - Scheduling retries based on ui_settings.loop_interval_seconds
+
+        Returns:
+            None - but may add self to media.ignore_queue or ignore.add()
+        """
         global imdb_scraped
         imdb_scraped = False
         names = []
