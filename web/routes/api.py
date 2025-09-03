@@ -341,6 +341,31 @@ async def get_statistics() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
 
+@router.get("/years")
+async def get_distinct_years() -> Dict[str, Any]:
+    """Get all distinct years from the media dataset"""
+    conn = get_db_connection()
+    
+    try:
+        # Get distinct years, excluding NULL values, ordered by year descending
+        query = """
+            SELECT DISTINCT year 
+            FROM v_media 
+            WHERE year IS NOT NULL 
+            ORDER BY year DESC
+        """
+        
+        cursor = conn.execute(query)
+        years = [row[0] for row in cursor.fetchall()]
+        
+        return {
+            "years": years,
+            "count": len(years)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+
 @router.get("/releases")
 async def get_releases_for_media(guid: str = Query(..., description="Media item GUID")) -> Dict[str, Any]:
     """Get all releases for a specific media item by GUID"""

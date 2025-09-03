@@ -83,7 +83,7 @@
                 <i class="fas fa-film me-2"></i>Plex Debrid Dashboard
             </a>
             <div class="d-flex gap-2">
-                <button class="btn btn-outline-light btn-sm" onclick="refreshData()" title="Refresh Data (R)">
+                <button class="btn btn-outline-light btn-sm" onclick="refreshData()" title="Refresh Data (F5)">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
                 <button class="btn btn-outline-light btn-sm" onclick="toggleDarkMode()" title="Toggle Dark Mode (Ctrl+D)">
@@ -233,11 +233,7 @@
                         <label class="form-label small mb-1">Year:</label>
                         <select class="form-select form-select-sm" id="year-filter">
                             <option value="">All Years</option>
-                            <option value="2024">2024</option>
-                            <option value="2023">2023</option>
-                            <option value="2022">2022</option>
-                            <option value="2021">2021</option>
-                            <option value="2020">2020</option>
+                            <!-- Years will be populated dynamically -->
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -400,6 +396,7 @@
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             refreshData();
+            loadDistinctYears();
             setupAutoRefresh();
             setupAdvancedFilters();
             setupKeyboardShortcuts();
@@ -428,6 +425,7 @@
         async function refreshData() {
             await Promise.all([
                 loadStatistics(),
+                loadDistinctYears(),
                 loadPendingItems(),
                 loadDownloadingItems(),
                 loadIgnoredItems()
@@ -460,6 +458,30 @@
                 document.getElementById('collected-total').textContent = stats.collected.total;
             } catch (error) {
                 console.error('Error loading statistics:', error);
+            }
+        }
+
+        // Load distinct years for the year filter
+        async function loadDistinctYears() {
+            try {
+                const response = await fetch('/api/years');
+                const data = await response.json();
+                
+                const yearFilter = document.getElementById('year-filter');
+                if (yearFilter && data.years) {
+                    // Clear existing options except "All Years"
+                    yearFilter.innerHTML = '<option value="">All Years</option>';
+                    
+                    // Add each year as an option
+                    data.years.forEach(year => {
+                        const option = document.createElement('option');
+                        option.value = year;
+                        option.textContent = year;
+                        yearFilter.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading distinct years:', error);
             }
         }
 
@@ -543,6 +565,25 @@
                 params.append('page', page);
                 params.append('page_size', currentPageSize);
                 
+                // Add advanced filters
+                const sourceFilter = document.getElementById('source-filter');
+                const yearFilter = document.getElementById('year-filter');
+                const sortBy = document.getElementById('sort-by');
+                const searchInput = document.getElementById('search-input');
+                
+                if (sourceFilter && sourceFilter.value) {
+                    params.append('source', sourceFilter.value);
+                }
+                if (yearFilter && yearFilter.value) {
+                    params.append('year', yearFilter.value);
+                }
+                if (sortBy && sortBy.value) {
+                    params.append('sort_by', sortBy.value);
+                }
+                if (searchInput && searchInput.value.trim()) {
+                    params.append('search', searchInput.value.trim());
+                }
+                
                 const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
@@ -584,6 +625,25 @@
                 }
                 params.append('page', page);
                 params.append('page_size', currentPageSize);
+                
+                // Add advanced filters
+                const sourceFilter = document.getElementById('source-filter');
+                const yearFilter = document.getElementById('year-filter');
+                const sortBy = document.getElementById('sort-by');
+                const searchInput = document.getElementById('search-input');
+                
+                if (sourceFilter && sourceFilter.value) {
+                    params.append('source', sourceFilter.value);
+                }
+                if (yearFilter && yearFilter.value) {
+                    params.append('year', yearFilter.value);
+                }
+                if (sortBy && sortBy.value) {
+                    params.append('sort_by', sortBy.value);
+                }
+                if (searchInput && searchInput.value.trim()) {
+                    params.append('search', searchInput.value.trim());
+                }
                 
                 const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
@@ -803,18 +863,24 @@
             
             if (sourceFilter) {
                 sourceFilter.addEventListener('change', function() {
+                    // Reset to page 1 and reload current tab with current filter
+                    currentPage = 1;
                     loadCurrentTabItems(currentFilter, 1);
                 });
             }
             
             if (yearFilter) {
                 yearFilter.addEventListener('change', function() {
+                    // Reset to page 1 and reload current tab with current filter
+                    currentPage = 1;
                     loadCurrentTabItems(currentFilter, 1);
                 });
             }
             
             if (sortBy) {
                 sortBy.addEventListener('change', function() {
+                    // Reset to page 1 and reload current tab with current filter
+                    currentPage = 1;
                     loadCurrentTabItems(currentFilter, 1);
                 });
             }
@@ -833,6 +899,8 @@
             
             // Debounce search to avoid too many API calls
             searchTimeout = setTimeout(() => {
+                // Reset to page 1 and reload current tab with current filter
+                currentPage = 1;
                 loadCurrentTabItems(currentFilter, 1);
             }, 300);
         }
@@ -841,6 +909,8 @@
             const searchInput = document.getElementById('search-input');
             if (searchInput) {
                 searchInput.value = '';
+                // Reset to page 1 and reload current tab with current filter
+                currentPage = 1;
                 loadCurrentTabItems(currentFilter, 1);
             }
         }
@@ -970,8 +1040,8 @@
                     e.preventDefault();
                     toggleDarkMode();
                 }
-                // R: Refresh data
-                else if (e.key === 'r' && !e.ctrlKey && !e.altKey) {
+                // F5: Refresh data (standard browser refresh key)
+                else if (e.key === 'F5') {
                     e.preventDefault();
                     refreshData();
                     loadCurrentTabItems(currentFilter, currentPage);
@@ -995,7 +1065,7 @@
 
         function showKeyboardShortcuts() {
             const shortcuts = [
-                { key: 'R', description: 'Refresh data' },
+                { key: 'F5', description: 'Refresh data' },
                 { key: 'Ctrl+D', description: 'Toggle dark mode' },
                 { key: '?', description: 'Show this help' },
                 { key: '1-3', description: 'Switch tabs (1=Pending, 2=Downloading, 3=Ignored)' },
