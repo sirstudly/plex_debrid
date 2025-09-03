@@ -74,6 +74,45 @@
             background-color: #404040 !important;
             color: #ffffff !important;
         }
+
+        /* Sortable header styles */
+        .sortable-header {
+            transition: background-color 0.2s ease;
+        }
+
+        .sortable-header:hover {
+            background-color: #f8f9fa !important;
+        }
+
+        .dark-mode .sortable-header:hover {
+            background-color: #404040 !important;
+        }
+
+        .sortable-header .fa-sort {
+            opacity: 0.5;
+            transition: opacity 0.2s ease;
+        }
+
+        .sortable-header:hover .fa-sort {
+            opacity: 1;
+        }
+
+        .dark-mode .sortable-header .fa-sort {
+            color: #e0e0e0 !important;
+        }
+
+        .sortable-header .fa-sort-up {
+            color: #0d6efd !important;
+        }
+
+        .dark-mode .sortable-header .fa-sort-up {
+            color: #6ea8fe !important;
+        }
+
+        .sortable-header .fa-sort-up,
+        .sortable-header .fa-sort-down {
+            opacity: 1 !important;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -242,6 +281,9 @@
                             <option value="watchlisted_at">Watchlisted Date</option>
                             <option value="title">Title</option>
                             <option value="year">Year</option>
+                            <option value="source">Source</option>
+                            <option value="watchlisted_by">Added By</option>
+                            <option value="status">Status</option>
                             <option value="updated_at">Updated Date</option>
                         </select>
                     </div>
@@ -392,6 +434,8 @@
         let autoRefreshInterval = null;
         let autoRefreshEnabled = false;
         let refreshInterval = 30000; // 30 seconds default
+        let currentSortField = 'watchlisted_at';
+        let currentSortDirection = 'desc'; // 'asc' or 'desc'
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -518,6 +562,8 @@
                 }
                 if (sortBy && sortBy.value) {
                     params.append('sort_by', sortBy.value);
+                    // Add sort direction
+                    params.append('sort_direction', currentSortDirection);
                 }
                 if (searchInput && searchInput.value.trim()) {
                     params.append('search', searchInput.value.trim());
@@ -526,18 +572,27 @@
                 const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
-                if (data.items && data.items.length > 0) {
-                    const table = createItemsTable(data.items, type || 'all');
-                    contentEl.appendChild(table);
-                    
-                    // Add pagination controls
-                    if (data.pagination && data.pagination.total_pages > 1) {
-                        const paginationEl = createPaginationControls(data.pagination, type);
-                        contentEl.appendChild(paginationEl);
-                    }
-                } else {
-                    contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-inbox fa-3x mb-3"></i><p>No pending items found</p></div>';
-                }
+                                 if (data.items && data.items.length > 0) {
+                     // Update current sort state from API response
+                     if (data.filters && data.filters.sort_by) {
+                         currentSortField = data.filters.sort_by;
+                         currentSortDirection = data.filters.sort_direction || 'desc';
+                     }
+                     
+                     const table = createItemsTable(data.items, type || 'all');
+                     contentEl.appendChild(table);
+                     
+                     // Add pagination controls
+                     if (data.pagination && data.pagination.total_pages > 1) {
+                         const paginationEl = createPaginationControls(data.pagination, type);
+                         contentEl.appendChild(paginationEl);
+                     }
+                     
+                     // Update sort indicators after table is created and sort state is known
+                     updateSortIndicators();
+                 } else {
+                     contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-inbox fa-3x mb-3"></i><p>No pending items found</p></div>';
+                 }
             } catch (error) {
                 errorEl.textContent = 'Error loading pending items: ' + error.message;
                 errorEl.style.display = 'block';
@@ -579,6 +634,8 @@
                 }
                 if (sortBy && sortBy.value) {
                     params.append('sort_by', sortBy.value);
+                    // Add sort direction
+                    params.append('sort_direction', currentSortDirection);
                 }
                 if (searchInput && searchInput.value.trim()) {
                     params.append('search', searchInput.value.trim());
@@ -587,18 +644,27 @@
                 const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
-                if (data.items && data.items.length > 0) {
-                    const table = createItemsTable(data.items, 'downloading');
-                    contentEl.appendChild(table);
-                    
-                    // Add pagination controls
-                    if (data.pagination && data.pagination.total_pages > 1) {
-                        const paginationEl = createPaginationControls(data.pagination, type);
-                        contentEl.appendChild(paginationEl);
-                    }
-                } else {
-                    contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-download fa-3x mb-3"></i><p>No items currently downloading</p></div>';
-                }
+                                 if (data.items && data.items.length > 0) {
+                     // Update current sort state from API response
+                     if (data.filters && data.filters.sort_by) {
+                         currentSortField = data.filters.sort_by;
+                         currentSortDirection = data.filters.sort_direction || 'desc';
+                     }
+                     
+                     const table = createItemsTable(data.items, 'downloading');
+                     contentEl.appendChild(table);
+                     
+                     // Add pagination controls
+                     if (data.pagination && data.pagination.total_pages > 1) {
+                         const paginationEl = createPaginationControls(data.pagination, type);
+                         contentEl.appendChild(paginationEl);
+                     }
+                     
+                     // Update sort indicators after table is created and sort state is known
+                     updateSortIndicators();
+                 } else {
+                     contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-download fa-3x mb-3"></i><p>No items currently downloading</p></div>';
+                 }
             } catch (error) {
                 errorEl.textContent = 'Error loading downloading items: ' + error.message;
                 errorEl.style.display = 'block';
@@ -640,6 +706,8 @@
                 }
                 if (sortBy && sortBy.value) {
                     params.append('sort_by', sortBy.value);
+                    // Add sort direction
+                    params.append('sort_direction', currentSortDirection);
                 }
                 if (searchInput && searchInput.value.trim()) {
                     params.append('search', searchInput.value.trim());
@@ -648,18 +716,27 @@
                 const response = await fetch(`${url}?${params}`);
                 const data = await response.json();
                 
-                if (data.items && data.items.length > 0) {
-                    const table = createItemsTable(data.items, 'ignored');
-                    contentEl.appendChild(table);
-                    
-                    // Add pagination controls
-                    if (data.pagination && data.pagination.total_pages > 1) {
-                        const paginationEl = createPaginationControls(data.pagination, type);
-                        contentEl.appendChild(paginationEl);
-                    }
-                } else {
-                    contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-ban fa-3x mb-3"></i><p>No ignored items found</p></div>';
-                }
+                                 if (data.items && data.items.length > 0) {
+                     // Update current sort state from API response
+                     if (data.filters && data.filters.sort_by) {
+                         currentSortField = data.filters.sort_by;
+                         currentSortDirection = data.filters.sort_direction || 'desc';
+                     }
+                     
+                     const table = createItemsTable(data.items, 'ignored');
+                     contentEl.appendChild(table);
+                     
+                     // Add pagination controls
+                     if (data.pagination && data.pagination.total_pages > 1) {
+                         const paginationEl = createPaginationControls(data.pagination, type);
+                         contentEl.appendChild(paginationEl);
+                     }
+                     
+                     // Update sort indicators after table is created and sort state is known
+                     updateSortIndicators();
+                 } else {
+                     contentEl.innerHTML = '<div class="text-center text-muted"><i class="fas fa-ban fa-3x mb-3"></i><p>No ignored items found</p></div>';
+                 }
             } catch (error) {
                 errorEl.textContent = 'Error loading ignored items: ' + error.message;
                 errorEl.style.display = 'block';
@@ -684,9 +761,38 @@
             
             const thead = document.createElement('thead');
             const headerRow = document.createElement('tr');
-            headers.forEach(header => {
+            headers.forEach((header, index) => {
                 const th = document.createElement('th');
-                th.textContent = header;
+                th.style.cursor = 'pointer';
+                th.style.userSelect = 'none';
+                th.className = 'sortable-header';
+                
+                // Create header content with sort indicator
+                const headerContent = document.createElement('div');
+                headerContent.className = 'd-flex align-items-center justify-content-between';
+                
+                const headerText = document.createElement('span');
+                headerText.textContent = header;
+                
+                const sortIcon = document.createElement('i');
+                sortIcon.className = 'fas fa-sort text-muted ms-1';
+                sortIcon.style.fontSize = '0.75rem';
+                
+                headerContent.appendChild(headerText);
+                headerContent.appendChild(sortIcon);
+                th.appendChild(headerContent);
+                
+                // Add click handler for sorting
+                th.onclick = () => handleHeaderSort(header, index);
+                
+                // Add hover effect
+                th.addEventListener('mouseenter', () => {
+                    th.style.backgroundColor = '#f8f9fa';
+                });
+                th.addEventListener('mouseleave', () => {
+                    th.style.backgroundColor = '';
+                });
+                
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
@@ -750,6 +856,112 @@
             table.appendChild(tbody);
             
             return table;
+        }
+
+        // Handle column header sorting
+        function handleHeaderSort(header, index) {
+            let sortField = 'watchlisted_at'; // Default
+            
+            // Map header text to sort field
+            switch (header) {
+                case 'Title':
+                case 'Episode':
+                case 'Season':
+                    sortField = 'title';
+                    break;
+                case 'Year':
+                    sortField = 'year';
+                    break;
+                case 'Source':
+                    sortField = 'source';
+                    break;
+                case 'Added By':
+                    sortField = 'watchlisted_by';
+                    break;
+                case 'Status':
+                    sortField = 'status';
+                    break;
+                case 'Added':
+                    sortField = 'watchlisted_at';
+                    break;
+                default:
+                    sortField = 'watchlisted_at';
+            }
+            
+            // Toggle sort direction if clicking the same column
+            if (currentSortField === sortField) {
+                currentSortDirection = currentSortDirection === 'desc' ? 'asc' : 'desc';
+            } else {
+                // New column, start with descending
+                currentSortDirection = 'desc';
+                currentSortField = sortField;
+            }
+            
+            // Update the sort-by dropdown to reflect the new sort
+            const sortBySelect = document.getElementById('sort-by');
+            if (sortBySelect) {
+                sortBySelect.value = sortField;
+            }
+            
+            // Update visual indicators for all headers
+            updateSortIndicators();
+            
+            // Reload current tab with new sort
+            currentPage = 1; // Reset to first page
+            loadCurrentTabItems(currentFilter, 1);
+            
+            // Show notification
+            showNotification(`Sorted by ${header} (${currentSortDirection === 'desc' ? 'descending' : 'ascending'})`, 'info');
+        }
+
+
+        
+        // Update sort indicators to show current sort state
+        function updateSortIndicators() {
+            const headers = document.querySelectorAll('.sortable-header');
+            headers.forEach(header => {
+                const icon = header.querySelector('.fa-sort, .fa-sort-up, .fa-sort-down');
+                const headerText = header.querySelector('span').textContent;
+                
+                // Map header text to sort field
+                let sortField = 'watchlisted_at'; // Default
+                switch (headerText) {
+                    case 'Title':
+                    case 'Episode':
+                    case 'Season':
+                        sortField = 'title';
+                        break;
+                    case 'Year':
+                        sortField = 'year';
+                        break;
+                    case 'Source':
+                        sortField = 'source';
+                        break;
+                    case 'Added By':
+                        sortField = 'watchlisted_by';
+                        break;
+                    case 'Status':
+                        sortField = 'status';
+                        break;
+                    case 'Added':
+                        sortField = 'watchlisted_at';
+                        break;
+                }
+                
+                if (icon && sortField === currentSortField) {
+                    // Show current sort direction
+                    if (currentSortDirection === 'desc') {
+                        icon.className = 'fas fa-sort-down text-primary ms-1';
+                    } else {
+                        icon.className = 'fas fa-sort-up text-primary ms-1';
+                    }
+                    icon.style.opacity = '1';
+                } else if (icon) {
+                    // Reset to neutral sort icon
+                    icon.className = 'fas fa-sort text-muted ms-1';
+                    icon.style.opacity = '0.5';
+                }
+            });
         }
 
         // Create pagination controls
@@ -861,6 +1073,11 @@
             const yearFilter = document.getElementById('year-filter');
             const sortBy = document.getElementById('sort-by');
             
+            // Initialize sort-by dropdown to match current sort state
+            if (sortBy) {
+                sortBy.value = currentSortField;
+            }
+            
             if (sourceFilter) {
                 sourceFilter.addEventListener('change', function() {
                     // Reset to page 1 and reload current tab with current filter
@@ -879,6 +1096,13 @@
             
             if (sortBy) {
                 sortBy.addEventListener('change', function() {
+                    // Update sort field and reset to descending order
+                    currentSortField = this.value;
+                    currentSortDirection = 'desc';
+                    
+                    // Update sort indicators based on dropdown selection
+                    updateSortIndicators();
+                    
                     // Reset to page 1 and reload current tab with current filter
                     currentPage = 1;
                     loadCurrentTabItems(currentFilter, 1);
