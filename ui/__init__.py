@@ -452,7 +452,7 @@ def threaded(stop):
         t0 = time.time()
         for element in unique(watchlists):
             if hasattr(element, 'download'):
-                element.download(library=library)
+                element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                 t1 = time.time()
                 #if more than 5 seconds have passed, check for newly watchlisted content
                 if t1-t0 >= 5:
@@ -472,7 +472,7 @@ def threaded(stop):
                         ui_print('checking new content ...')
                         for element in new_watchlists:
                             if hasattr(element, 'download'):
-                                element.download(library=library)
+                                element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                         ui_print('done')
                     t0 = time.time()
         ui_print('done')
@@ -498,7 +498,7 @@ def threaded(stop):
                                     newly_added = False
                                     break
                     if newly_added:
-                        element.download(library=library)
+                        element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
             ui_print('done')
         elif timeout_counter >= regular_check:
             # get entire plex_watchlist
@@ -521,7 +521,7 @@ def threaded(stop):
             t0 = time.time()
             for element in unique(watchlists):
                 if hasattr(element, 'download'):
-                    element.download(library=library)
+                    element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                     t1 = time.time()
                     #if more than 5 seconds have passed, check for newly watchlisted content
                     if t1-t0 >= 5:
@@ -541,7 +541,7 @@ def threaded(stop):
                             ui_print('checking new content ...')
                             for element in new_watchlists:
                                 if hasattr(element, 'download'):
-                                    element.download(library=library)
+                                    element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                             ui_print('done')
                         t0 = time.time()
             ui_print('done')

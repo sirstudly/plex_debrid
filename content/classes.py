@@ -1172,7 +1172,21 @@ class media:
             return not self.isContinuingSeries
         return False
 
-    def download(self, retries=0, library=[], parentReleases=[]):
+    def _remove_from_watchlist(self, item, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
+        """Remove this item from the appropriate watchlist service"""
+        source = self.watchlist.__module__.split('.')[-1]  # 'plex', 'trakt', etc.
+
+        # Find which watchlist service this item belongs to and remove it
+        if source == 'plex' and plex_watchlist:
+            plex_watchlist.remove(item)
+        elif source == 'trakt' and trakt_watchlist:
+            trakt_watchlist.remove(item)
+        elif source == 'overseerr' and overseerr_requests:
+            overseerr_requests.remove(item)
+        elif source == 'sqlite' and sqlite_requests:
+            sqlite_requests.remove(item)
+
+    def download(self, retries=0, library=[], parentReleases=[], plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
         global imdb_scraped
         refresh_ = False
         i = 0
@@ -1203,7 +1217,7 @@ class media:
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
                 ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
-                self.watchlist.remove([], self)
+                self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
             elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
                 if self.released() and not self.watched() and not self.downloading():
                     if not hasattr(self, "year") or self.year == None:
@@ -1247,7 +1261,7 @@ class media:
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
                 ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
-                self.watchlist.remove([], self)
+                self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
             if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
                 self.isanime()
                 self.Seasons = self.uncollected(library)
@@ -1369,7 +1383,7 @@ class media:
                     # start thread for each season
                     for index, Season in enumerate(self.Seasons):
                         results[index] = Season.download(
-                            library=library, parentReleases=parentReleases)
+                            library=library, parentReleases=parentReleases, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                     retry = False
                     for index, result in enumerate(results):
                         if result == None:
@@ -1380,7 +1394,7 @@ class media:
                             retry = True
                     if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
                         ui_print(f"show: '{self.title} ({self.year})' is in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
-                        self.watchlist.remove([], self)
+                        self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
                     toc = time.perf_counter()
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
         elif self.type == 'season':
@@ -1459,7 +1473,7 @@ class media:
                     retryep = True
                     if not hasattr(episode, "skip_download"):
                         downloaded, retryep = episode.download(
-                            library=library, parentReleases=scraped_releases)
+                            library=library, parentReleases=scraped_releases, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                     if downloaded:
                         refresh_ = True
                     if retryep:
@@ -1648,6 +1662,6 @@ class media:
         return False
 
 
-def download(cls, library, parentReleases, result, index):
+def download(cls, library, parentReleases, result, index, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
     result[index] = cls.download(
-        library=library, parentReleases=parentReleases)
+        library=library, parentReleases=parentReleases, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
