@@ -175,19 +175,27 @@ class watchlist(classes.watchlist):
                     url = 'https://discover.provider.plex.tv/actions/removeFromWatchlist?ratingKey=' + item.ratingKey + '&X-Plex-Token=' + user[1]
                     try:
                         response = session.put(url, data={'ratingKey': item.ratingKey})
-                        ui_print('[plex] item: "' + item.title + '" removed from ' + user[0] + '`s watchlist')
-                    except:
-                        ui_print('[plex] error: item "' + item.title + '" couldnt be removed from ' + user[0] + '`s watchlist')
-                if not self == []:
+                        if response and response.status_code == 200:
+                            ui_print('[plex] item: "' + item.title + '" removed from ' + user[0] + '`s watchlist')
+                        else:
+                            status_code = response.status_code if response else "No response"
+                            ui_print(f'[plex] error: item "{item.title}" could not be removed from {user[0]}\'s watchlist (HTTP {status_code})')
+                    except Exception as e:
+                        ui_print(f'[plex] error: item "{item.title}" could not be removed from {user[0]}\'s watchlist. {e}')
+                if not self == [] and item in self.data:
                     self.data.remove(item)
             else:
                 url = 'https://discover.provider.plex.tv/actions/removeFromWatchlist?ratingKey=' + item.ratingKey + '&X-Plex-Token=' + item.user[1]
                 try:
                     response = session.put(url, data={'ratingKey': item.ratingKey})
-                    ui_print('[plex] item: "' + item.title + '" removed from ' + item.user[0] + '`s watchlist')
-                except:
-                    ui_print('[plex] error: item "' + item.title + '" couldnt be removed from ' + user[0] + '`s watchlist')
-                if not self == []:
+                    if response and response.status_code == 200:
+                        ui_print('[plex] item: "' + item.title + '" removed from ' + item.user[0] + '`s watchlist')
+                    else:
+                        status_code = response.status_code if response else "No response"
+                        ui_print(f'[plex] error: item "{item.title}" could not be removed from {item.user[0]}\'s watchlist (HTTP {status_code})')
+                except Exception as e:
+                    ui_print(f'[plex] error: item "{item.title}" could not be removed from {item.user[0]}\'s watchlist. {e}')
+                if not self == [] and item in self.data:
                     self.data.remove(item)
 
     def add(self, item, user):
@@ -298,49 +306,41 @@ class show(classes.media):
             for user in users:
                 if library.ignore.user == user[0]:
                     token = user[1]
-        success = False
-        while not success:
-            url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
+        url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
+        response = get(session, url)
+        if not response == None and hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
+            self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
+            self.EID = setEID(self)
+            self.Seasons = []
+            url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '/children?includeUserState=1&X-Plex-Container-Size=200&X-Plex-Container-Start=0&X-Plex-Token=' + token
             response = get(session, url)
             if not response == None:
-                self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
-                self.EID = setEID(self)
-                self.Seasons = []
-                url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '/children?includeUserState=1&X-Plex-Container-Size=200&X-Plex-Container-Start=0&X-Plex-Token=' + token
-                response = get(session, url)
-                if not response == None:
-                    if hasattr(response, 'MediaContainer'):
-                        if hasattr(response.MediaContainer, 'Metadata'):
-                            for Season in response.MediaContainer.Metadata[:]:
-                                if Season.index == 0:
-                                    response.MediaContainer.Metadata.remove(Season)
-                            results = [None] * len(response.MediaContainer.Metadata)
-                            threads = []
-                            # start thread for each season
-                            for index, Season in enumerate(response.MediaContainer.Metadata):
-                                Season.parentYear = self.year
-                                Season.parentEID = self.EID
-                                if hasattr(self,"user"):
-                                    Season.user = self.user
-                                t = Thread(target=multi_init, args=(season, Season, results, index))
-                                threads.append(t)
-                                t.start()
-                            # wait for the threads to complete
-                            for t in threads:
-                                t.join()
-                            self.Seasons = results
-                            self.leafCount = 0
-                            self.viewedLeafCount = 0
-                            self.duration = 0
-                            for season_ in self.Seasons:
-                                self.leafCount += season_.leafCount
-                                self.viewedLeafCount += season_.viewedLeafCount
-                                self.duration += season_.duration if hasattr(season_,"duration") else 0
-                    success = True
-                else:
-                    time.sleep(1)
-            else:
-                time.sleep(1)
+                if hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
+                    for Season in response.MediaContainer.Metadata[:]:
+                        if Season.index == 0:
+                            response.MediaContainer.Metadata.remove(Season)
+                    results = [None] * len(response.MediaContainer.Metadata)
+                    threads = []
+                    # start thread for each season
+                    for index, Season in enumerate(response.MediaContainer.Metadata):
+                        Season.parentYear = self.year
+                        Season.parentEID = self.EID
+                        if hasattr(self,"user"):
+                            Season.user = self.user
+                        t = Thread(target=multi_init, args=(season, Season, results, index))
+                        threads.append(t)
+                        t.start()
+                    # wait for the threads to complete
+                    for t in threads:
+                        t.join()
+                    self.Seasons = results
+                    self.leafCount = 0
+                    self.viewedLeafCount = 0
+                    self.duration = 0
+                    for season_ in self.Seasons:
+                        self.leafCount += season_.leafCount
+                        self.viewedLeafCount += season_.viewedLeafCount
+                        self.duration += season_.duration if hasattr(season_,"duration") else 0
         if not hasattr(self,"watchlistedAt"):
             if hasattr(self,"addedAt"):
                 self.watchlistedAt = self.addedAt
@@ -362,7 +362,8 @@ class movie(classes.media):
             ratingKey = ratingKey.split('/')[-1]
         url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
         response = get(session, url)
-        self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
+        if hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
+            self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
         self.EID = setEID(self)
         if not hasattr(self,"watchlistedAt"):
             if hasattr(self,"addedAt"):
