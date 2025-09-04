@@ -823,7 +823,7 @@
                         <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
                         <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
-                        <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
+                        <td>${formatDate(item.watchlisted_at)}</td>
                     `;
                 } else if (item.media_type === 'season') {
                     // Season row
@@ -834,7 +834,7 @@
                         <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
                         <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
-                        <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
+                        <td>${formatDate(item.watchlisted_at)}</td>
                     `;
                 } else {
                     // Movie/Show row
@@ -847,7 +847,7 @@
                         <td><span class="badge bg-info">${item.source || 'Unknown'}</span></td>
                         <td><span class="badge bg-secondary">${item.watchlisted_by || 'Unknown'}</span></td>
                         <td><span class="badge bg-${statusColor}">${item.status || 'Unknown'}</span></td>
-                        <td>${formatDate(item.watchlisted_at || item.updated_at)}</td>
+                        <td>${formatDate(item.watchlisted_at)}</td>
                     `;
                 }
                 
