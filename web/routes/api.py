@@ -26,6 +26,7 @@ async def get_media_items(
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
     sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    sort_direction: Optional[str] = Query("desc", description="Sort direction: asc, desc"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
@@ -67,11 +68,15 @@ async def get_media_items(
         offset = (page - 1) * page_size
         
         # Validate sort column to prevent SQL injection
-        valid_sort_columns = ["watchlisted_at", "title", "year", "updated_at"]
+        valid_sort_columns = ["watchlisted_at", "title", "year", "updated_at", "source", "watchlisted_by", "status"]
         if sort_by not in valid_sort_columns:
             sort_by = "watchlisted_at"
         
-        query += f" ORDER BY {sort_by} DESC LIMIT {page_size} OFFSET {offset}"
+        # Validate sort direction
+        if sort_direction not in ["asc", "desc"]:
+            sort_direction = "desc"
+        
+        query += f" ORDER BY {sort_by} {sort_direction.upper()} LIMIT {page_size} OFFSET {offset}"
         
         cursor = conn.execute(query, params)
         columns = [description[0] for description in cursor.description]
@@ -102,7 +107,9 @@ async def get_media_items(
                 "media_type": media_type,
                 "source": source,
                 "year": year,
-                "search": search
+                "search": search,
+                "sort_by": sort_by,
+                "sort_direction": sort_direction
             }
         }
         
@@ -116,6 +123,7 @@ async def get_pending_items(
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
     sort_by: Optional[str] = Query("watchlisted_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    sort_direction: Optional[str] = Query("desc", description="Sort direction: asc, desc"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
@@ -127,6 +135,7 @@ async def get_pending_items(
         year=year,
         search=search,
         sort_by=sort_by,
+        sort_direction=sort_direction,
         page=page,
         page_size=page_size
     )
@@ -201,6 +210,7 @@ async def get_downloading_items(
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
     sort_by: Optional[str] = Query("updated_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    sort_direction: Optional[str] = Query("desc", description="Sort direction: asc, desc"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
@@ -212,6 +222,7 @@ async def get_downloading_items(
         year=year,
         search=search,
         sort_by=sort_by,
+        sort_direction=sort_direction,
         page=page,
         page_size=page_size
     )
@@ -223,6 +234,7 @@ async def get_ignored_items(
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
     sort_by: Optional[str] = Query("updated_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    sort_direction: Optional[str] = Query("desc", description="Sort direction: asc, desc"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
@@ -234,6 +246,7 @@ async def get_ignored_items(
         year=year,
         search=search,
         sort_by=sort_by,
+        sort_direction=sort_direction,
         page=page,
         page_size=page_size
     )
@@ -245,6 +258,7 @@ async def get_collected_items(
     year: Optional[int] = Query(None, description="Filter by year"),
     search: Optional[str] = Query(None, description="Search in titles"),
     sort_by: Optional[str] = Query("updated_at", description="Sort by: watchlisted_at, title, year, updated_at"),
+    sort_direction: Optional[str] = Query("desc", description="Sort direction: asc, desc"),
     page: Optional[int] = Query(1, description="Page number (1-based)", ge=1),
     page_size: Optional[int] = Query(50, description="Items per page", ge=1, le=200)
 ) -> Dict[str, Any]:
@@ -256,6 +270,7 @@ async def get_collected_items(
         year=year,
         search=search,
         sort_by=sort_by,
+        sort_direction=sort_direction,
         page=page,
         page_size=page_size
     )
@@ -337,6 +352,31 @@ async def get_statistics() -> Dict[str, Any]:
             }
         
         return stats
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+
+@router.get("/years")
+async def get_distinct_years() -> Dict[str, Any]:
+    """Get all distinct years from the media dataset"""
+    conn = get_db_connection()
+    
+    try:
+        # Get distinct years, excluding NULL values, ordered by year descending
+        query = """
+            SELECT DISTINCT year 
+            FROM v_media 
+            WHERE year IS NOT NULL 
+            ORDER BY year DESC
+        """
+        
+        cursor = conn.execute(query)
+        years = [row[0] for row in cursor.fetchall()]
+        
+        return {
+            "years": years,
+            "count": len(years)
+        }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")

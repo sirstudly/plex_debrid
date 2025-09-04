@@ -113,9 +113,9 @@ SELECT
     tmdb,
     tvdb,
     watchlisted_by,
-    watchlisted_at,
+    COALESCE(datetime(watchlisted_at), datetime('1970-01-01')) as watchlisted_at,
     source,
-    updated_at,
+    COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
@@ -139,9 +139,9 @@ SELECT
     tmdb,
     tvdb,
     watchlisted_by,
-    watchlisted_at,
+    COALESCE(datetime(watchlisted_at), datetime('1970-01-01')) as watchlisted_at,
     source,
-    updated_at,
+    COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
@@ -168,9 +168,9 @@ SELECT
     NULL as tmdb,
     NULL as tvdb,
     watchlisted_by,
-    updated_at as watchlisted_at,
+    COALESCE(datetime(updated_at), datetime('1970-01-01')) as watchlisted_at,
     source,
-    updated_at,
+    COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
@@ -201,9 +201,9 @@ SELECT
     NULL as tmdb,
     NULL as tvdb,
     watchlisted_by,
-    updated_at as watchlisted_at,
+    COALESCE(datetime(updated_at), datetime('1970-01-01')) as watchlisted_at,
     source,
-    updated_at,
+    COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
