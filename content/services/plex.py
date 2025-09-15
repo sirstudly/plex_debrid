@@ -553,7 +553,7 @@ class library(classes.library):
                     if library.refresh.partial == "true":
                         for folder in folders:
                             refreshing = True
-                            while refreshing:
+                            while refreshing:  # if we are already refreshing the library, wait...
                                 refreshing = False
                                 url = library.url + '/library/sections/?X-Plex-Token=' + users[0][1]
                                 response = get(session, url)
@@ -561,7 +561,7 @@ class library(classes.library):
                                     if section_.refreshing:
                                         refreshing = True
                                 if refreshing:
-                                    time.sleep(0.25)
+                                    time.sleep(5)
                             url = library.url + '/library/sections/' + section + '/refresh?path='+folder+'&X-Plex-Token=' + users[0][1]
                             ui_print("refreshing plex via url: " + url, debug=ui_settings.debug)
                             response = session.get(url)

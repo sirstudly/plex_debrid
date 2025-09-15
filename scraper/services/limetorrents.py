@@ -80,6 +80,8 @@ def scrape(query, altquery):
 
                             scraped_releases += [releases.release('[limetorrents]', 'torrent', title, [], size, [download], seeders=seeders)]
                             ui_print(f"[limetorrents] Scraped release: title={title}, size={size:.2f} GB, seeders={seeders}", ui_settings.debug)
+                        else:
+                            ui_print(f"[limetorrents] skipping {title} because it does not match deviation {altquery}")
                 else:
                     ui_print("[limetorrents] No torrents found", ui_settings.debug)
             else:

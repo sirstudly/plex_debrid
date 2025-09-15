@@ -67,6 +67,8 @@ def scrape(query, altquery):
 
                             scraped_releases += [releases.release('[rarbg]', 'torrent', title, [], size, [download], seeders=int(seeders))]
                             ui_print(f"[rarbg] Scraped release: title={title}, size={size} GB, seeders={seeders}", ui_settings.debug)
+                        else:
+                            ui_print(f"[rarbg] skipping {title} because it does not match deviation {altquery}")
                 else:
                     ui_print("[rarbg] No torrents found", ui_settings.debug)
             else:

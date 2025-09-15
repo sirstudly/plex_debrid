@@ -610,11 +610,11 @@ class media:
                 if regex.search(str(self.year), releases.rename(self.title.replace(str(self.year), '') + ' ' + str(self.year))):
                     title = title.replace('.' + str(self.year), '')
                     if year != "":
-                        return '(.*?)(' + title + ':?.*)\(?\[?(' + str(year) + ')?(?!.*[Ss]\d+[Ee]\d+)'
-                    return '(.*?)(' + title + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?(?!.*[Ss]\d+[Ee]\d+)'
+                        return '(?!.*[Ss]\d+[Ee]\d+)(.*?)(' + title + ':?.*)\(?\[?(' + str(year) + ')?'
+                    return '(?!.*[Ss]\d+[Ee]\d+)(.*?)(' + title + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
                 else:
                     title = title.replace('.' + str(self.year), '')
-                    return '(.*?)(' + title + ')(?!.*[Ss]\d+[Ee]\d+)'
+                    return '(?!.*[Ss]\d+[Ee]\d+)(.*?)(' + title + ')'
             elif self.type == 'show':
                 title = title.replace('.' + str(self.year), '')
                 return '(.*?)(' + title + ':?.)(series.|[^A-Za-z0-9]+)?((\(?' + str(self.year) + '\)?.)|(complete.)|(seasons?.[0-9]+.[0-9]?[0-9]?.?)|(S[0-9]+.S?[0-9]?[0-9]?.?)|(S[0-9]+E[0-9]+))'
@@ -652,7 +652,7 @@ class media:
             title = title.replace('[', '\[').replace(']', '\]')
             if self.type == 'movie':
                 title = title.replace('.' + str(self.year), '')
-                return '(.*?)(' + title + ')(.*?)(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?(?!.*[Ss]\d+[Ee]\d+)'
+                return '(?!.*[Ss]\d+[Ee]\d+)(.*?)(' + title + ')(.*?)(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
             elif self.type == 'show':
                 title = title.replace('.' + str(self.year), '')
                 return '(.*?)(' + title + ')(.*?)('+self.anime_count+'|(complete)|(seasons?[^0-9]?[0-9]+[^A-Z0-9]+S?[0-9]+)|(S[0-9]+[^A-Z0-9]+S?[0-9]+))'
