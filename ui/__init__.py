@@ -421,13 +421,20 @@ def unique(lst):
                 # If we find a duplicate, preserve the watchlist information
                 # by adding the current obj's watchlist to the unique_obj's watchlists
                 if not hasattr(unique_obj, '_all_watchlists'):
-                    unique_obj._all_watchlists = [unique_obj.watchlist]
-                if obj.watchlist not in unique_obj._all_watchlists:
+                    # Only add watchlist if the object has one
+                    if hasattr(unique_obj, 'watchlist'):
+                        unique_obj._all_watchlists = [unique_obj.watchlist]
+                    else:
+                        unique_obj._all_watchlists = []
+                if hasattr(obj, 'watchlist') and obj.watchlist not in unique_obj._all_watchlists:
                     unique_obj._all_watchlists.append(obj.watchlist)
                 break
         if is_unique:
             # Initialize the _all_watchlists attribute for new unique objects
-            obj._all_watchlists = [obj.watchlist]
+            if hasattr(obj, 'watchlist'):
+                obj._all_watchlists = [obj.watchlist]
+            else:
+                obj._all_watchlists = []
             unique_objects.append(obj)
     return unique_objects
 

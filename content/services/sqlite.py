@@ -1,4 +1,5 @@
 from ui.ui_print import *
+from ui import ui_settings
 from content import classes
 from store import sqlite_store
 import time
@@ -273,6 +274,31 @@ class watchlist(classes.watchlist):
             
         except Exception as e:
             ui_print("[sqlite] error: couldnt update local requests: " + str(e), debug=ui_settings.debug)
+            return False
+    
+    def remove(self, item):
+        """Remove a local request by setting requested_at to NULL in the database."""
+        try:
+            # Get database connection
+            conn = sqlite_store._get_connection()
+            
+            # Set requested_at to NULL to effectively "remove" the request
+            cursor = conn.execute(
+                "UPDATE media_release SET requested_at = NULL WHERE guid = ? AND hash = ?",
+                (item.guid, getattr(item, 'local_request_hash', ''))
+            )
+            
+            # Commit the change
+            conn.commit()
+            
+            # Remove from local data
+            super().remove(item)
+            
+            ui_print(f'[sqlite] local request removed: {getattr(item, "title", "Unknown")}')
+            return True
+            
+        except Exception as e:
+            ui_print(f"[sqlite] error: couldnt remove local request: {str(e)}", debug=ui_settings.debug)
             return False
     
     def _is_request_processed(self, item):

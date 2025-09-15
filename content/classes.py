@@ -1239,7 +1239,11 @@ class media:
             watchlists_to_remove_from = item._all_watchlists
         else:
             # Fallback to the original behavior if _all_watchlists doesn't exist
-            watchlists_to_remove_from = [item.watchlist]
+            if hasattr(item, 'watchlist'):
+                watchlists_to_remove_from = [item.watchlist]
+            else:
+                # If item has no watchlist attribute, it can't be removed from any watchlist
+                return
 
         # Remove from all watchlists where the item appears, but only if autoremove is enabled
         for watchlist_obj in watchlists_to_remove_from:
