@@ -18,6 +18,8 @@ media_file_extensions = [
 api_key = ""
 # Define Variables
 session = requests.Session()
+# Rate-limited session for API calls (250 req/min = ~0.24s between requests)
+rate_limited_session = custom_session(get_rate_limit=0.24, post_rate_limit=0.24)
 errors = [
     [202," action already done"],
     [400," bad Request (see error message)"],
@@ -49,7 +51,7 @@ def get(url):
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36','authorization': 'Bearer ' + api_key}
     response = None
     try:
-        response = session.get(url, headers=headers)
+        response = rate_limited_session.get(url, headers=headers)
         logerror(response)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
@@ -64,7 +66,7 @@ def post(url, data):
     response = None
     try:
         ui_print("[realdebrid] (post): " + url + " with data " + repr(data), debug=ui_settings.debug)
-        response = session.post(url, headers=headers, data=data)
+        response = rate_limited_session.post(url, headers=headers, data=data)
         logerror(response)
         ui_print("[realdebrid] response: " + repr(response), debug=ui_settings.debug)
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
@@ -82,7 +84,7 @@ def delete(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36','authorization': 'Bearer ' + api_key}
     try:
         ui_print("[realdebrid] (delete): " + url, debug=ui_settings.debug)
-        response = requests.delete(url, headers=headers)
+        response = rate_limited_session.delete(url, headers=headers)
         logerror(response)
 
     except Exception as e:
@@ -247,8 +249,7 @@ class cache:
     def __init__(self):
         self.refresh_interval_minutes = 30  # Default value
         self.last_refresh = None
-        self.session = custom_session(get_rate_limit=0.24, post_rate_limit=0.24)  # 250 req/min = ~0.24s between requests
-        
+
     def should_refresh(self):
         """Check if cache should be refreshed based on configured interval"""
         if self.last_refresh is None:
@@ -307,8 +308,8 @@ class cache:
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
                     'authorization': 'Bearer ' + api_key
                 }
-                response = self.session.get(url, headers=headers)
-                
+                response = rate_limited_session.get(url, headers=headers)
+
                 if not response or response.status_code != 200:
                     ui_print(f'[realdebrid_cache] error fetching torrents page {page}: HTTP {response.status_code if response else "None"}', ui_settings.debug)
                     break
