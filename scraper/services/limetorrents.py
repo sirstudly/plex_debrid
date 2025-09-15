@@ -47,7 +47,16 @@ def scrape(query, altquery):
 
                             link_element = torrent.select_one('div.tt-name a:nth-of-type(1)')
                             link = link_element['href'] if link_element else '#'
-                            download = link.replace("http://itorrents.org/torrent/", "magnet:?xt=urn:btih:").replace(".torrent?title=", "&dn=")
+                            # Extract hash and title from itorrents URL to create magnet link
+                            import re
+                            itorrents_pattern = r'http://itorrents\.(?:org|net)/torrent/([A-F0-9]+)\.torrent\?title=(.+)'
+                            match = re.match(itorrents_pattern, link)
+                            if match:
+                                hash_value = match.group(1)
+                                title = match.group(2)
+                                download = f"magnet:?xt=urn:btih:{hash_value}&dn={title}"
+                            else:
+                                download = link  # fallback to original link if pattern doesn't match
 
                             size_element = torrent.select_one('td.tdnormal:nth-of-type(3)')
                             size = size_element.get_text().strip() if size_element else '0 GB'
