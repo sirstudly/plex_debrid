@@ -31,11 +31,12 @@ class watchlist(Sequence):
     def add(self, item, user):
         self.data.append(item)
     
-    def should_autoremove(self, item_type):
+    @classmethod
+    def should_autoremove(cls, item_type):
         """Check if this watchlist should auto-remove items of the given type"""
-        if not hasattr(self, 'autoremove'):
+        if not hasattr(cls, 'autoremove'):
             return False
-        return self.autoremove == "both" or self.autoremove == item_type
+        return cls.autoremove == "both" or cls.autoremove == item_type
 
 
 class library:
