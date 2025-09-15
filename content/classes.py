@@ -557,6 +557,41 @@ class media:
                                 episode.alternate_titles = self.alternate_titles
 
     def deviation(self, year=""):
+        """
+        Generate a regex pattern for matching torrent/release titles that deviate from the standard media title.
+        
+        This method creates flexible regex patterns that can match various naming conventions and formats
+        used in torrent/release titles, accounting for different ways the same media might be named.
+        
+        The function handles both regular media and anime content differently, as anime often has
+        different naming conventions and season numbering systems.
+        
+        Args:
+            year (str, optional): Specific year to match. If provided, the pattern will be more restrictive
+                                to that year. If empty, allows for year variations (±1 year).
+        
+        Returns:
+            str: A regex pattern string that can be used to match torrent/release titles that correspond
+                 to this media item. The pattern accounts for:
+                 - Alternate titles (if available)
+                 - Different punctuation and spacing conventions
+                 - Year variations (original year ±1, or specific year if provided)
+                 - Media type-specific patterns (movies, shows, seasons, episodes)
+                 - Anime-specific patterns (Roman numerals, different season numbering)
+        
+        Note:
+            - For movies: Matches title with optional year variations, but excludes titles with season/episode identifiers (S01E13, etc.)
+            - For shows: Matches title with series indicators and season information
+            - For seasons: Matches title with specific season numbers (including Roman numerals for anime)
+            - For episodes: Matches title with season/episode numbers or airdate formats
+            - Anime content uses different patterns including Roman numerals and anime-specific numbering
+        
+        Example patterns generated:
+            - Movie: '(.*?)(movie.title:?.*)\(?\[?(2023|2022|2024)?(?!.*[Ss]\d+[Ee]\d+)'
+            - Show: '(.*?)(show.title:?.)(series.|[^A-Za-z0-9]+)?((\(?2023\)?.)|(complete.)|...)'
+            - Season: '(.*?)(show.title:?.)(series.|[^A-Za-z0-9]+)?(\(?2023\)?.)?(season.1[^0-9e]|...)'
+            - Episode: '(.*?)(show.title:?.)(series.)?(\(?2023\)?.)?(S01E01.|...)'
+        """
         self.versions()
         if not self.isanime():
             if hasattr(self, 'alternate_titles'):
@@ -575,11 +610,11 @@ class media:
                 if regex.search(str(self.year), releases.rename(self.title.replace(str(self.year), '') + ' ' + str(self.year))):
                     title = title.replace('.' + str(self.year), '')
                     if year != "":
-                        return '(.*?)(' + title + ':?.*)\(?\[?(' + str(year) + ')?'
-                    return '(.*?)(' + title + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
+                        return '(.*?)(' + title + ':?.*)\(?\[?(' + str(year) + ')?(?!.*[Ss]\d+[Ee]\d+)'
+                    return '(.*?)(' + title + ':?.*)\(?\[?(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?(?!.*[Ss]\d+[Ee]\d+)'
                 else:
                     title = title.replace('.' + str(self.year), '')
-                    return '(.*?)(' + title + ')'
+                    return '(.*?)(' + title + ')(?!.*[Ss]\d+[Ee]\d+)'
             elif self.type == 'show':
                 title = title.replace('.' + str(self.year), '')
                 return '(.*?)(' + title + ':?.)(series.|[^A-Za-z0-9]+)?((\(?' + str(self.year) + '\)?.)|(complete.)|(seasons?.[0-9]+.[0-9]?[0-9]?.?)|(S[0-9]+.S?[0-9]?[0-9]?.?)|(S[0-9]+E[0-9]+))'
@@ -617,7 +652,7 @@ class media:
             title = title.replace('[', '\[').replace(']', '\]')
             if self.type == 'movie':
                 title = title.replace('.' + str(self.year), '')
-                return '(.*?)(' + title + ')(.*?)(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?'
+                return '(.*?)(' + title + ')(.*?)(' + str(self.year) + '|' + str(self.year - 1) + '|' + str(self.year + 1) + ')?(?!.*[Ss]\d+[Ee]\d+)'
             elif self.type == 'show':
                 title = title.replace('.' + str(self.year), '')
                 return '(.*?)(' + title + ')(.*?)('+self.anime_count+'|(complete)|(seasons?[^0-9]?[0-9]+[^A-Z0-9]+S?[0-9]+)|(S[0-9]+[^A-Z0-9]+S?[0-9]+))'
