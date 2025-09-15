@@ -412,6 +412,7 @@ settings_list = [
         ),
         setting('Real Debrid API Key', 'Please enter your Real Debrid API Key: ', debrid.services.realdebrid, 'api_key',
                 hidden=True),
+        setting('Real Debrid cache refresh interval (minutes)', 'Please enter the cache refresh interval in minutes: ', debrid.services.realdebrid.cache, 'refresh_interval_minutes', hidden=True),
         setting('All Debrid API Key', 'Please enter your All Debrid API Key: ', debrid.services.alldebrid, 'api_key',
                 hidden=True),
         setting('Premiumize API Key', 'Please enter your Premiumize API Key: ', debrid.services.premiumize, 'api_key',
