@@ -94,6 +94,22 @@ CREATE TABLE IF NOT EXISTS media_release (
     PRIMARY KEY (guid, hash)
 );
 
+-- Real-Debrid torrents cache table
+CREATE TABLE IF NOT EXISTS realdebrid_torrents (
+    id TEXT PRIMARY KEY,
+    filename TEXT,
+    hash TEXT,
+    bytes INTEGER,
+    progress INTEGER,
+    status TEXT,
+    added TEXT,
+    ended TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT,
+    sync_marker TEXT
+);
+
 -- ============================================================================
 -- VIEW CREATION
 -- ============================================================================
@@ -248,6 +264,12 @@ CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
 CREATE INDEX IF NOT EXISTS idx_media_release_status ON media_release(status);
 CREATE INDEX IF NOT EXISTS idx_media_release_requested_at ON media_release(requested_at);
 CREATE INDEX IF NOT EXISTS idx_media_release_guid ON media_release(guid);
+
+-- Indexes for realdebrid_torrents table
+CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_hash ON realdebrid_torrents(hash);
+CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_status ON realdebrid_torrents(status);
+CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_updated_at ON realdebrid_torrents(updated_at);
+CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_deleted_at ON realdebrid_torrents(deleted_at);
 
 -- ============================================================================
 -- USAGE EXAMPLES

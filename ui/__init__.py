@@ -433,6 +433,10 @@ def threaded(stop):
     regular_check = int(ui_settings.loop_interval_seconds)
     timeout_counter = 0
     library = content.classes.library()[0]()
+    # refresh Real-Debrid cache on startup
+    if debrid.services.realdebrid.cache.should_refresh():
+        ui_print('refreshing Real-Debrid cache...')
+        debrid.services.realdebrid.cache.sync_torrents()
     # get entire plex_watchlist
     plex_watchlist = content.services.plex.watchlist()
     # get entire trakt_watchlist
@@ -501,6 +505,10 @@ def threaded(stop):
                         element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
             ui_print('done')
         elif timeout_counter >= regular_check:
+            # refresh Real-Debrid cache if needed
+            if debrid.services.realdebrid.cache.should_refresh():
+                ui_print('refreshing Real-Debrid cache...')
+                debrid.services.realdebrid.cache.sync_torrents()
             # get entire plex_watchlist
             plex_watchlist = content.services.plex.watchlist()
             # get entire trakt_watchlist
