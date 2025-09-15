@@ -30,6 +30,12 @@ class watchlist(Sequence):
 
     def add(self, item, user):
         self.data.append(item)
+    
+    def should_autoremove(self, item_type):
+        """Check if this watchlist should auto-remove items of the given type"""
+        if not hasattr(self, 'autoremove'):
+            return False
+        return self.autoremove == "both" or self.autoremove == item_type
 
 
 class library:
@@ -1226,18 +1232,31 @@ class media:
         return False
 
     def _remove_from_watchlist(self, item, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
-        """Remove this item from the appropriate watchlist service"""
-        source = self.watchlist.__module__.split('.')[-1]  # 'plex', 'trakt', etc.
+        """Remove this item from all watchlist services where it appears, respecting autoremove settings"""
+        # Get all watchlists this item appears in
+        watchlists_to_remove_from = []
+        if hasattr(item, '_all_watchlists'):
+            watchlists_to_remove_from = item._all_watchlists
+        else:
+            # Fallback to the original behavior if _all_watchlists doesn't exist
+            watchlists_to_remove_from = [item.watchlist]
 
-        # Find which watchlist service this item belongs to and remove it
-        if source == 'plex' and plex_watchlist:
-            plex_watchlist.remove(item)
-        elif source == 'trakt' and trakt_watchlist:
-            trakt_watchlist.remove(item)
-        elif source == 'overseerr' and overseerr_requests:
-            overseerr_requests.remove(item)
-        elif source == 'sqlite' and sqlite_requests:
-            sqlite_requests.remove(item)
+        # Remove from all watchlists where the item appears, but only if autoremove is enabled
+        for watchlist_obj in watchlists_to_remove_from:
+            # Check if this watchlist should auto-remove items of this type
+            if not watchlist_obj.should_autoremove(item.type):
+                continue
+                
+            source = watchlist_obj.__module__.split('.')[-1]  # 'plex', 'trakt', etc.
+            
+            if source == 'plex' and plex_watchlist:
+                plex_watchlist.remove(item)
+            elif source == 'trakt' and trakt_watchlist:
+                trakt_watchlist.remove(item)
+            elif source == 'overseerr' and overseerr_requests:
+                overseerr_requests.remove(item)
+            elif source == 'sqlite' and sqlite_requests:
+                sqlite_requests.remove(item)
 
     def download(self, retries=0, library=[], parentReleases=[], plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
         global imdb_scraped
@@ -1268,8 +1287,8 @@ class media:
         if self.type == 'movie':
             ui_print(f"processing movie: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
-            if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "movie") and self.collected(library):
-                ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
+            if self.collected(library):
+                ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from watchlists.")
                 self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
             elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
                 if self.released() and not self.watched() and not self.downloading():
@@ -1312,8 +1331,8 @@ class media:
         elif self.type == 'show':
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
-            if (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
-                ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
+            if self.collected(library) and self.hasended():
+                ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from watchlists.")
                 self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
             if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
                 self.isanime()
@@ -1445,8 +1464,8 @@ class media:
                             refresh_ = True
                         if result[1]:
                             retry = True
-                    if not retry and (self.watchlist.autoremove == "both" or self.watchlist.autoremove == "show") and self.collected(library) and self.hasended():
-                        ui_print(f"show: '{self.title} ({self.year})' is in library. Removing from {self.watchlist.__module__.split('.')[-1]} watchlist.")
+                    if not retry and self.collected(library) and self.hasended():
+                        ui_print(f"show: '{self.title} ({self.year})' is in library. Removing from watchlists.")
                         self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
                     toc = time.perf_counter()
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
@@ -1626,9 +1645,13 @@ class media:
                 releases.sort(self.Releases, self.version)
                 if len(self.Releases) > 0:
                     releases.print_releases(self.Releases, True)
+
+                # store all release metadata in database
+                for release in self.Releases:
+                    sqlite_store.upsert_release(self, release, downloaded=False)
+
                 ver_dld = False
                 for release in copy.deepcopy(self.Releases):
-                    sqlite_store.upsert_release(self, release, downloaded=False)
 
                     # Check if this release is blacklisted - if so, skip it
                     if sqlite_store.is_release_blacklisted(self, release):

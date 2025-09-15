@@ -237,6 +237,7 @@ class show(classes.media):
                 self.Seasons += [season]
 
 class requests(classes.watchlist):
+    autoremove = "none"  # Overseerr requests can be both movies and shows
 
     def __init__(self):
         global last_requests

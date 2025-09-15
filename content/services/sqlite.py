@@ -154,6 +154,7 @@ class library():
 
 class watchlist(classes.watchlist):
     """Local SQLite-based watchlist for user-requested releases."""
+    autoremove = "none"  # SQLite requests can be both movies and shows
     
     def __init__(self):
         self.data = []
