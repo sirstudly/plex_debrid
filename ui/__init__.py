@@ -436,10 +436,16 @@ def unique(lst):
                             setattr(unique_obj, attr_name, getattr(obj, attr_name))
                         elif attr_name == 'user' and hasattr(obj, 'user') and hasattr(unique_obj, 'user'):
                             # Special handling for user attribute - merge user lists
-                            if isinstance(obj.user, list) and isinstance(unique_obj.user, list):
-                                for user in obj.user:
-                                    if user not in unique_obj.user:
-                                        unique_obj.user.append(user)
+                            # Ensure both are lists for consistent structure
+                            if not isinstance(unique_obj.user, list):
+                                unique_obj.user = [unique_obj.user]
+                            if not isinstance(obj.user, list):
+                                obj.user = [obj.user]
+                            
+                            # Merge the user lists
+                            for user in obj.user:
+                                if user not in unique_obj.user:
+                                    unique_obj.user.append(user)
                 break
         if is_unique:
             # Initialize the _all_watchlists attribute for new unique objects

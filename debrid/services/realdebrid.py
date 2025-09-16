@@ -17,7 +17,6 @@ media_file_extensions = [
 # (required) Authentification of the Debrid service, can be oauth aswell. Create a setting for the required variables in the ui.settings_list. For an oauth example check the trakt authentification.
 api_key = ""
 # Define Variables
-session = requests.Session()
 # Rate-limited session for API calls (250 req/min = ~0.24s between requests)
 rate_limited_session = custom_session(get_rate_limit=0.24, post_rate_limit=0.24)
 errors = [

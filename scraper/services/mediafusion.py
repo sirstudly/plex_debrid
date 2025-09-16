@@ -7,7 +7,7 @@ name = "mediafusion"
 base_url = "https://mediafusion.elfhosted.com"
 api_password = ""
 request_timeout_sec = "60"
-rate_limit_sec = "10"  # minimum number of seconds between requests
+rate_limit_sec = "15"  # minimum number of seconds between requests
 manifest_json_url = ""
 mediafusion_encrypted_str = ""
 
