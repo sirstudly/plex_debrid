@@ -442,9 +442,11 @@ def unique(lst):
                             if not isinstance(obj.user, list):
                                 obj.user = [obj.user]
                             
-                            # Merge the user lists
+                            # Merge the user lists, but be careful about structure
                             for user in obj.user:
-                                if user not in unique_obj.user:
+                                # Only add if it's a proper user tuple/list and not already present
+                                if (isinstance(user, (list, tuple)) and len(user) >= 2 and 
+                                    user not in unique_obj.user):
                                     unique_obj.user.append(user)
                 break
         if is_unique:

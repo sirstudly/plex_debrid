@@ -4,6 +4,7 @@ import releases
 import debrid
 import scraper
 from ui.ui_print import *
+from ui import ui_settings
 from store import sqlite_store
 
 imdb_scraped = False
@@ -1255,7 +1256,12 @@ class media:
             source = watchlist_obj.__module__.split('.')[-1]  # 'plex', 'trakt', etc.
             
             if source == 'plex' and plex_watchlist:
-                plex_watchlist.remove(item)
+                # Only remove from Plex if the item has the required Plex attributes
+                if hasattr(item, 'ratingKey') and hasattr(item, 'user') and isinstance(item.user, list) and len(item.user) > 0:
+                    try:
+                        plex_watchlist.remove(item)
+                    except Exception as e:
+                        ui_print(f"[plex] error removing item: {e}", debug=ui_settings.debug)
             elif source == 'trakt' and trakt_watchlist:
                 trakt_watchlist.remove(item)
             elif source == 'overseerr' and overseerr_requests:
