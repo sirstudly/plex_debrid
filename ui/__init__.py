@@ -418,8 +418,7 @@ def unique(lst):
         for unique_obj in unique_objects:
             if unique_obj == obj:
                 is_unique = False
-                # If we find a duplicate, preserve the watchlist information
-                # by adding the current obj's watchlist to the unique_obj's watchlists
+                # If we find a duplicate, merge attributes and preserve watchlist information
                 if not hasattr(unique_obj, '_all_watchlists'):
                     # Only add watchlist if the object has one
                     if hasattr(unique_obj, 'watchlist'):
@@ -428,6 +427,19 @@ def unique(lst):
                         unique_obj._all_watchlists = []
                 if hasattr(obj, 'watchlist') and obj.watchlist not in unique_obj._all_watchlists:
                     unique_obj._all_watchlists.append(obj.watchlist)
+                
+                # Merge attributes from the duplicate object
+                for attr_name in dir(obj):
+                    if not attr_name.startswith('_') and not callable(getattr(obj, attr_name)):
+                        if not hasattr(unique_obj, attr_name):
+                            # Copy attribute if unique_obj doesn't have it
+                            setattr(unique_obj, attr_name, getattr(obj, attr_name))
+                        elif attr_name == 'user' and hasattr(obj, 'user') and hasattr(unique_obj, 'user'):
+                            # Special handling for user attribute - merge user lists
+                            if isinstance(obj.user, list) and isinstance(unique_obj.user, list):
+                                for user in obj.user:
+                                    if user not in unique_obj.user:
+                                        unique_obj.user.append(user)
                 break
         if is_unique:
             # Initialize the _all_watchlists attribute for new unique objects
