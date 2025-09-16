@@ -396,6 +396,8 @@ settings_list = [
         setting('Comet Rate Limit', 'Please enter the minimum number of seconds between requests: ', scraper.services.comet, 'rate_limit_sec', hidden=True),
         setting('Comet Scraper Parameters', 'Please enter a valid Comet manifest URL: ', scraper.services.comet, 'manifest_json_url', entry="parameter",
                 help='This setting lets you control the comet scraping parameters. Visit "https://comet.elfhosted.com/configure" and configure your settings. Click on "Copy Link" and paste it here.', hidden=True),
+        setting('TorrentsDB Scraper Parameters', 'Please enter a valid TorrentsDB manifest URL: ', scraper.services.torrentsdb, 'manifest_json_url', entry="parameter",
+                help='This setting lets you control the torrentsdb scraping parameters. Visit "https://torrentsdb.com" and configure your settings. Click on "Copy URL" and paste it here.', hidden=True),
             ]
         ],
     ['Debrid Services', [
