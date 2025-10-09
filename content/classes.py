@@ -314,7 +314,8 @@ class media:
                             return True
                     return False
                 return self.grandparentGuid == other.grandparentGuid and self.parentIndex == other.parentIndex and self.index == other.index
-        except:
+        except Exception as e:
+            ui_print(f"[comparison error]: Failed to compare {self.type} items: {str(e)}", debug=ui_settings.debug)
             return False
 
     def match(self, service):
@@ -1176,9 +1177,11 @@ class media:
                     return True
                 match = next((x for x in list if x == self), None)
                 if not hasattr(match, 'leafCount'):
+                    ui_print(f"[collected check]: show '{self.title}' found in library but has no leafCount", debug=ui_settings.debug)
                     return False
                 if match.leafCount == self.leafCount:
                     return True
+                ui_print(f"[collected check]: show '{self.title}' leafCount mismatch - library: {match.leafCount}, watchlist: {self.leafCount}", debug=ui_settings.debug)
             return False
         if self.type == "season":
             for show in list:
@@ -1187,7 +1190,9 @@ class media:
                         if self == season:
                             if season.leafCount == self.leafCount:
                                 return True
+                            ui_print(f"[collected check]: season '{self.parentTitle} {self.title}' leafCount mismatch - library: {season.leafCount}, watchlist: {self.leafCount}", debug=ui_settings.debug)
                             return False
+            ui_print(f"[collected check]: season '{self.parentTitle} {self.title}' not found in library", debug=ui_settings.debug)
             return False
         if self.type == "episode":
             for show in list:
@@ -1196,6 +1201,7 @@ class media:
                         for episode in season.Episodes:
                             if self == episode:
                                 return True
+            ui_print(f"[collected check]: episode '{self.grandparentTitle} S{self.parentIndex}E{self.index}' not found in library", debug=ui_settings.debug)
             return False
 
     def uncollected(self, list):
@@ -1302,7 +1308,11 @@ class media:
                 ui_print(f"movie: '{self.title} ({self.year})' is already in library. Removing from watchlists.")
                 self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
             elif (len(self.uncollected(library)) > 0 or self.version_missing()) and len(self.versions()) > 0:
-                if self.released() and not self.watched() and not self.downloading():
+                if self.released() and self.watched():
+                    ui_print(f"movie: '{self.title} ({self.year})' is in ignored list. Removing from watchlists.")
+                    self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
+                    self.unwatch()
+                elif self.released() and not self.downloading():
                     if not hasattr(self, "year") or self.year == None:
                         ui_print("error: media item has no release year.")
                         return
@@ -1348,8 +1358,12 @@ class media:
             if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
                 self.isanime()
                 self.Seasons = self.uncollected(library)
+                if len(self.Seasons) == 0 and self.hasended():
+                    ui_print(f"show: '{self.title} ({self.year})' is currently being ignored (missing episodes). Removing from watchlists.")
+                    self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
+                    self.unwatch()
                 # if there are uncollected episodes
-                if len(self.Seasons) > 0:
+                else:
                     tic = time.perf_counter()
                     langs = []
                     for version in self.versions():
@@ -1654,20 +1668,22 @@ class media:
                 self.version = version
                 self.Releases = copy.deepcopy(scraped_releases)
                 releases.sort(self.Releases, self.version)
+                
+                # Filter out releases that are blacklisted or downloaded
+                filtered_releases = []
+                for release in self.Releases:
+                    if not sqlite_store.is_release_at_status(self, release, ['blacklisted', 'downloaded', 'pending']):
+                        filtered_releases.append(release)
+                        sqlite_store.upsert_release(self, release, downloaded=False)
+                    else:
+                        ui_print(f"[debrid_download] filtering out previously processed release: {release.title}", ui_settings.debug)
+
+                self.Releases = filtered_releases
                 if len(self.Releases) > 0:
                     releases.print_releases(self.Releases, True)
 
-                # store all release metadata in database
-                for release in self.Releases:
-                    sqlite_store.upsert_release(self, release, downloaded=False)
-
                 ver_dld = False
                 for release in copy.deepcopy(self.Releases):
-
-                    # Check if this release is blacklisted - if so, skip it
-                    if sqlite_store.is_release_blacklisted(self, release):
-                        ui_print(f"[debrid_download] skipping blacklisted release: {release.title}", ui_settings.debug)
-                        continue
 
                     self.Releases = [release,]
                     if (hasattr(release, "cached") and len(release.cached) > 0) or (hasattr(release, "maybe_cached") and len(release.maybe_cached) > 0):

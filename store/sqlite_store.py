@@ -179,15 +179,16 @@ def mark_release_downloaded(media_obj, release) -> None:
         print("[sqlite] error: couldnt mark release as downloaded: " + str(e))
 
 
-def is_release_blacklisted(media_obj, release) -> bool:
-    """Check if a release is blacklisted in the database.
+def is_release_at_status(media_obj, release, statuses) -> bool:
+    """Check if a release has any of the specified statuses in the database.
     
     Args:
         media_obj: The media object (movie/episode) the release belongs to.
         release: A release instance from releases.release with attributes.
+        statuses: A string or list of strings representing the status(es) to check for.
         
     Returns:
-        True if the release is blacklisted, False otherwise.
+        True if the release has any of the specified statuses, False otherwise.
     """
     try:
         conn = _get_connection()
@@ -198,6 +199,10 @@ def is_release_blacklisted(media_obj, release) -> bool:
         if hash_value is None:
             return False
         
+        # Normalize statuses to a list
+        if isinstance(statuses, str):
+            statuses = [statuses]
+        
         # Query the database for the release status
         cursor = conn.execute(
             "SELECT status FROM media_release WHERE guid = ? AND hash = ?",
@@ -205,11 +210,11 @@ def is_release_blacklisted(media_obj, release) -> bool:
         )
         result = cursor.fetchone()
         
-        # Return True if the release is blacklisted
-        return result and result[0] == 'blacklisted'
+        # Return True if the release has any of the specified statuses
+        return result and result[0] in statuses
         
     except Exception as e:
-        print("[sqlite] error: couldnt check release blacklist status: " + str(e))
+        print("[sqlite] error: couldnt check release status: " + str(e))
         return False
 
 
