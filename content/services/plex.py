@@ -940,21 +940,37 @@ class library(classes.library):
                     item.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
                 else:
                     match = next((x for x in current_library if item == x), None)
-                    if hasattr(match,"Guid"):
-                        item.Guid = match.Guid
-                    if hasattr(match,"Label"):
-                        item.Label = match.Label
-                    if hasattr(match,"librarySectionID"):
-                        item.librarySectionID = match.librarySectionID
+                    if match is not None:
+                        if hasattr(match,"Guid"):
+                            item.Guid = match.Guid
+                        if hasattr(match,"Label"):
+                            item.Label = match.Label
+                        if hasattr(match,"librarySectionID"):
+                            item.librarySectionID = match.librarySectionID
+                    # If cached item doesn't have Guid, fetch it from Plex
+                    if not hasattr(item, "Guid") or not item.Guid:
+                        ui_print(f"[plex]: item '{item.title}' in cache has no Guid, fetching from server", debug=ui_settings.debug)
+                        updated = True
+                        url = library.url + '/library/metadata/' + item.ratingKey + '?X-Plex-Token=' + users[0][1]
+                        response = get(session, url)
+                        if response and hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
+                            item.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
                 item.EID = setEID(item)
                 if item.type == "show":
+                    if not hasattr(item, "EID") or not item.EID:
+                        ui_print(f"[plex warning]: show '{item.title}' has no EID, metadata may be incomplete", debug=ui_settings.debug)
                     for season in item.Seasons:
                         season.parentEID = item.EID
+                        if not hasattr(season, "parentEID") or not season.parentEID:
+                            ui_print(f"[plex warning]: season '{item.title} {season.title}' has no parentEID", debug=ui_settings.debug)
                         for episode in season.Episodes:
                             episode.grandparentEID = item.EID
-            except:
+                            if not hasattr(episode, "grandparentEID") or not episode.grandparentEID:
+                                ui_print(f"[plex warning]: episode '{item.title} S{episode.parentIndex}E{episode.index}' has no grandparentEID", debug=ui_settings.debug)
+            except Exception as e:
                 ui_print('done')
-                ui_print("[plex error]: found incorrectly matched library item : " + item.title + " - this item needs a metadata refresh (open plex webui, find item, open item menu, refresh metadata).")  
+                ui_print(f"[plex error]: found incorrectly matched library item: {item.title if hasattr(item, 'title') else 'unknown'} - Error: {str(e)}", debug=ui_settings.debug)
+                ui_print("[plex error]: this item needs a metadata refresh (open plex webui, find item, open item menu, refresh metadata).")  
         ui_print('done')
         current_library = copy.deepcopy(list_)
         if first_load and updated:
