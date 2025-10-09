@@ -1,5 +1,6 @@
 # import modules
 from ui.ui_print import *
+from ui import ui_settings
 import releases
 import base64
 import json
@@ -22,6 +23,11 @@ def request(func, *args):
         return []
     except Exception as e:
         ui_print('[torrentsdb] error: ' + str(e))
+        return []
+
+    # Check if response is valid before trying to parse it
+    if response is None:
+        ui_print('[torrentsdb] error: no response received.')
         return []
 
     try:
