@@ -948,17 +948,25 @@ class library(classes.library):
             list_.append(value)
         
         # Validate show hierarchy and auto-repair corrupted data
+        # NOTE: This runs during LIBRARY INITIALIZATION, not during watchlist processing
+        # At this point, shows should have their FULL hierarchy from Plex (all seasons/episodes)
+        # The .uncollected() filtering happens later in the download logic
         corrupted_shows = []
         repaired_shows = []
         repaired_any = False
         for item in list_:
             if item.type == "show":
                 needs_repair = False
-                if not hasattr(item, "Seasons") or not item.Seasons:
-                    ui_print(f"[plex warning]: show '{item.title}' has no seasons after hierarchy build - attempting auto-repair", debug=ui_settings.debug)
+                
+                # Only repair if show has 0 episodes but should have some
+                # (Don't repair shows that legitimately have no released episodes yet)
+                if (not hasattr(item, "Seasons") or not item.Seasons) and hasattr(item, "leafCount") and item.leafCount == 0:
+                    ui_print(f"[plex warning]: show '{item.title}' has no seasons after hierarchy build - checking if repair needed", debug=ui_settings.debug)
                     needs_repair = True
-                elif not hasattr(item, "leafCount") or item.leafCount == 0:
-                    ui_print(f"[plex warning]: show '{item.title}' has leafCount of 0 - attempting auto-repair", debug=ui_settings.debug)
+                elif hasattr(item, "leafCount") and item.leafCount == 0 and hasattr(item, "childCount"):
+                    # Only repair if Plex reports the show should have children
+                    # childCount is set during hierarchy building before episodes are linked
+                    ui_print(f"[plex warning]: show '{item.title}' has leafCount of 0 - checking if repair needed", debug=ui_settings.debug)
                     needs_repair = True
                 
                 if needs_repair:
@@ -1003,8 +1011,9 @@ class library(classes.library):
                                 # Mark as repaired so cache gets saved with repaired data
                                 repaired_any = True
                             else:
-                                ui_print(f"[plex error]: Failed to repair '{item.title}' - still has 0 episodes")
-                                corrupted_shows.append(item.title)
+                                # Plex returned no episodes - this is correct, not an error
+                                # (Show might have no released episodes yet, or only specials)
+                                ui_print(f"[plex]: Show '{item.title}' legitimately has no episodes in Plex - skipping repair", debug=ui_settings.debug)
                         else:
                             ui_print(f"[plex error]: Failed to fetch details for '{item.title}'", debug=ui_settings.debug)
                             corrupted_shows.append(item.title)
