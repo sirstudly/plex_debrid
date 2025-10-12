@@ -947,25 +947,79 @@ class library(classes.library):
         for value in shows.values():
             list_.append(value)
         
-        # Validate show hierarchy to detect corrupted data
+        # Validate show hierarchy and auto-repair corrupted data
         corrupted_shows = []
+        repaired_shows = []
+        repaired_any = False
         for item in list_:
             if item.type == "show":
+                needs_repair = False
                 if not hasattr(item, "Seasons") or not item.Seasons:
-                    ui_print(f"[plex error]: show '{item.title}' has no seasons after hierarchy build - GUID mismatch likely", debug=ui_settings.debug)
-                    corrupted_shows.append(item.title)
+                    ui_print(f"[plex warning]: show '{item.title}' has no seasons after hierarchy build - attempting auto-repair", debug=ui_settings.debug)
+                    needs_repair = True
                 elif not hasattr(item, "leafCount") or item.leafCount == 0:
-                    ui_print(f"[plex error]: show '{item.title}' has leafCount of 0 after hierarchy build - no episodes linked", debug=ui_settings.debug)
-                    corrupted_shows.append(item.title)
+                    ui_print(f"[plex warning]: show '{item.title}' has leafCount of 0 - attempting auto-repair", debug=ui_settings.debug)
+                    needs_repair = True
+                
+                if needs_repair:
+                    try:
+                        # Fetch full show details directly from Plex API to rebuild hierarchy
+                        ui_print(f"[plex]: Fetching full details for '{item.title}' to repair hierarchy...", debug=ui_settings.debug)
+                        url = library.url + '/library/metadata/' + item.ratingKey + '/children?includeUserState=1&X-Plex-Container-Size=200&X-Plex-Container-Start=0&X-Plex-Token=' + users[0][1]
+                        response = get(session, url)
+                        
+                        if response and hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
+                            # Rebuild seasons list
+                            item.Seasons = []
+                            item.leafCount = 0
+                            item.childCount = 0
+                            
+                            for season_data in response.MediaContainer.Metadata:
+                                if season_data.index == 0:  # Skip specials
+                                    continue
+                                
+                                # Fetch episodes for this season
+                                season_url = library.url + '/library/metadata/' + season_data.ratingKey + '/children?includeUserState=1&X-Plex-Container-Size=200&X-Plex-Container-Start=0&X-Plex-Token=' + users[0][1]
+                                season_response = get(session, season_url)
+                                
+                                if season_response and hasattr(season_response, 'MediaContainer') and hasattr(season_response.MediaContainer, 'Metadata'):
+                                    season_obj = classes.media(season_data)
+                                    season_obj.Episodes = []
+                                    season_obj.leafCount = 0
+                                    
+                                    for episode_data in season_response.MediaContainer.Metadata:
+                                        episode_obj = classes.media(episode_data)
+                                        season_obj.Episodes.append(episode_obj)
+                                        season_obj.leafCount += 1
+                                    
+                                    item.Seasons.append(season_obj)
+                                    item.leafCount += season_obj.leafCount
+                                    item.childCount += 1
+                            
+                            if item.leafCount > 0:
+                                # Set up EIDs for the repaired hierarchy (will be done in the loop below)
+                                ui_print(f"[plex]: Successfully repaired '{item.title}' - found {item.leafCount} episodes across {len(item.Seasons)} seasons")
+                                repaired_shows.append(item.title)
+                                # Mark as repaired so cache gets saved with repaired data
+                                repaired_any = True
+                            else:
+                                ui_print(f"[plex error]: Failed to repair '{item.title}' - still has 0 episodes")
+                                corrupted_shows.append(item.title)
+                        else:
+                            ui_print(f"[plex error]: Failed to fetch details for '{item.title}'", debug=ui_settings.debug)
+                            corrupted_shows.append(item.title)
+                    except Exception as e:
+                        ui_print(f"[plex error]: Exception while repairing '{item.title}': {str(e)}", debug=ui_settings.debug)
+                        corrupted_shows.append(item.title)
         
-        force_cache_update = False
+        if repaired_shows:
+            ui_print(f"[plex]: Auto-repaired {len(repaired_shows)} shows with GUID mismatches: {', '.join(repaired_shows[:3])}")
+        
         if corrupted_shows:
-            ui_print(f"[plex error]: {len(corrupted_shows)} shows have corrupted hierarchy: {', '.join(corrupted_shows[:3])}")
-            ui_print(f"[plex error]: This is usually caused by GUID mismatches. Check if Plex metadata needs refreshing.")
-            ui_print(f"[plex error]: To fix: In Plex, go to the affected shows -> Manage -> Refresh Metadata")
-            # Force cache invalidation on next run by clearing current_library
-            ui_print(f"[plex]: Invalidating library cache to force fresh fetch on next run", debug=ui_settings.debug)
-            force_cache_update = True
+            ui_print(f"[plex error]: {len(corrupted_shows)} shows could not be repaired: {', '.join(corrupted_shows[:3])}")
+            ui_print(f"[plex error]: Manual fix required: In Plex, go to these shows -> Manage -> Refresh Metadata")
+        
+        force_cache_update = repaired_any or len(corrupted_shows) > 0
         
         if len(list_) - len(current_library) > 0:
             ui_print('done')
