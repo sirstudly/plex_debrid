@@ -906,11 +906,25 @@ class library(classes.library):
                 item.leafCount = 0
                 item.Episodes = []
                 seasons[item.guid] = item
+        # Track skipped episodes for debugging
+        skipped_episodes = 0
+        skipped_episodes_details = []
+        
         for episode in list_:
-            if episode.type != "episode" or not episode.parentGuid in seasons:
+            if episode.type != "episode":
+                continue
+            if not episode.parentGuid in seasons:
+                skipped_episodes += 1
+                episode_title = f"{episode.grandparentTitle} S{episode.parentIndex}E{episode.index}" if hasattr(episode, 'grandparentTitle') else f"S{episode.parentIndex}E{episode.index}"
+                if skipped_episodes <= 5:  # Only log first 5 to avoid spam
+                    skipped_episodes_details.append(f"{episode_title} (parentGuid: {episode.parentGuid})")
                 continue
             season = seasons[episode.parentGuid]
             if not season.parentGuid in shows:
+                skipped_episodes += 1
+                episode_title = f"{episode.grandparentTitle} S{episode.parentIndex}E{episode.index}" if hasattr(episode, 'grandparentTitle') else f"S{episode.parentIndex}E{episode.index}"
+                if skipped_episodes <= 5:
+                    skipped_episodes_details.append(f"{episode_title} (season parentGuid: {season.parentGuid})")
                 continue
             show = shows[season.parentGuid]
             season_ = next((x for x in show.Seasons if season == x), None)
@@ -924,13 +938,39 @@ class library(classes.library):
                 show.childCount += 1
                 show.leafCount += 1
                 show.Seasons.append(season)
+        
+        if skipped_episodes > 0:
+            ui_print(f"[plex warning]: {skipped_episodes} episodes were skipped due to GUID mismatches during hierarchy building", debug=ui_settings.debug)
+            for detail in skipped_episodes_details:
+                ui_print(f"[plex warning]:   - {detail}", debug=ui_settings.debug)
         list_ = [item for item in list_ if item.type == "movie"]
         for value in shows.values():
             list_.append(value)
+        
+        # Validate show hierarchy to detect corrupted data
+        corrupted_shows = []
+        for item in list_:
+            if item.type == "show":
+                if not hasattr(item, "Seasons") or not item.Seasons:
+                    ui_print(f"[plex error]: show '{item.title}' has no seasons after hierarchy build - GUID mismatch likely", debug=ui_settings.debug)
+                    corrupted_shows.append(item.title)
+                elif not hasattr(item, "leafCount") or item.leafCount == 0:
+                    ui_print(f"[plex error]: show '{item.title}' has leafCount of 0 after hierarchy build - no episodes linked", debug=ui_settings.debug)
+                    corrupted_shows.append(item.title)
+        
+        force_cache_update = False
+        if corrupted_shows:
+            ui_print(f"[plex error]: {len(corrupted_shows)} shows have corrupted hierarchy: {', '.join(corrupted_shows[:3])}")
+            ui_print(f"[plex error]: This is usually caused by GUID mismatches. Check if Plex metadata needs refreshing.")
+            ui_print(f"[plex error]: To fix: In Plex, go to the affected shows -> Manage -> Refresh Metadata")
+            # Force cache invalidation on next run by clearing current_library
+            ui_print(f"[plex]: Invalidating library cache to force fresh fetch on next run", debug=ui_settings.debug)
+            force_cache_update = True
+        
         if len(list_) - len(current_library) > 0:
             ui_print('done')
             ui_print('[plex] getting metadata for ' + str(len(list_) - len(current_library)) + ' collected movies/shows ...')
-        updated = False
+        updated = force_cache_update
         for item in list_:
             try:
                 if not item in current_library:
@@ -947,6 +987,15 @@ class library(classes.library):
                             item.Label = match.Label
                         if hasattr(match,"librarySectionID"):
                             item.librarySectionID = match.librarySectionID
+                        
+                        # Check if cached show has corrupted/stale season data
+                        if item.type == "show":
+                            cached_leaf_count = match.leafCount if hasattr(match, 'leafCount') else 0
+                            fresh_leaf_count = item.leafCount if hasattr(item, 'leafCount') else 0
+                            if cached_leaf_count != fresh_leaf_count:
+                                ui_print(f"[plex]: show '{item.title}' leafCount changed from {cached_leaf_count} to {fresh_leaf_count} - cache will be updated", debug=ui_settings.debug)
+                                updated = True
+                    
                     # If cached item doesn't have Guid, fetch it from Plex
                     if not hasattr(item, "Guid") or not item.Guid:
                         ui_print(f"[plex]: item '{item.title}' in cache has no Guid, fetching from server", debug=ui_settings.debug)
