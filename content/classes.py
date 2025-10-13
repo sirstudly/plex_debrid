@@ -305,8 +305,13 @@ class media:
                     for EID in self.parentEID:
                         if EID in other.parentEID and self.index == other.index:
                             return True
+                    # Log GUID mismatch for debugging
+                    ui_print(f"[comparison debug]: season '{self.parentTitle} {self.title}' EID mismatch - watchlist EIDs: {getattr(self, 'parentEID', [])}, library EIDs: {getattr(other, 'parentEID', [])}", debug=ui_settings.debug)
                     return False
-                return self.parentGuid == other.parentGuid and self.index == other.index
+                guid_match = self.parentGuid == other.parentGuid and self.index == other.index
+                if not guid_match:
+                    ui_print(f"[comparison debug]: season '{self.parentTitle} {self.title}' GUID mismatch - watchlist: {getattr(self, 'parentGuid', 'None')}, library: {getattr(other, 'parentGuid', 'None')}", debug=ui_settings.debug)
+                return guid_match
             elif self.type == 'episode':
                 if hasattr(self, "grandparentEID") and hasattr(other, "grandparentEID"):
                     for EID in self.grandparentEID:
