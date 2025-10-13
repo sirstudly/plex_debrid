@@ -169,32 +169,62 @@ class watchlist(classes.watchlist):
         return should_update
 
     def remove(self, item):
-        if hasattr(item, 'user'):
+        if hasattr(item, 'user') and isinstance(item.user, list) and len(item.user) > 0:
+            # Helper function to extract username and token from various formats
+            def get_user_info(user_entry):
+                """Extract username and token from a user entry that might be a list, dict, or SimpleNamespace"""
+                if isinstance(user_entry, list) and len(user_entry) >= 2:
+                    # Expected format: [username, token]
+                    return str(user_entry[0]), str(user_entry[1])
+                elif isinstance(user_entry, dict):
+                    # Dict format: might have numeric keys or named keys
+                    if 0 in user_entry and 1 in user_entry:
+                        return str(user_entry[0]), str(user_entry[1])
+                    elif 'username' in user_entry and 'token' in user_entry:
+                        return str(user_entry['username']), str(user_entry['token'])
+                elif hasattr(user_entry, '__dict__'):
+                    # SimpleNamespace or similar object
+                    if hasattr(user_entry, 'username') and hasattr(user_entry, 'token'):
+                        return str(user_entry.username), str(user_entry.token)
+                # If we can't parse it, return None
+                return None, None
+            
+            # Check if item.user is a list of user entries
             if isinstance(item.user[0], list):
+                # Expected format: [[username1, token1], [username2, token2], ...]
                 for user in item.user:
-                    url = 'https://discover.provider.plex.tv/actions/removeFromWatchlist?ratingKey=' + item.ratingKey + '&X-Plex-Token=' + user[1]
-                    try:
-                        response = session.put(url, data={'ratingKey': item.ratingKey})
-                        if response and response.status_code == 200:
-                            ui_print('[plex] item: "' + item.title + '" removed from ' + user[0] + '`s watchlist')
-                        else:
-                            status_code = response.status_code if response else "No response"
-                            ui_print(f'[plex] error: item "{item.title}" could not be removed from {user[0]}\'s watchlist (HTTP {status_code})')
-                    except Exception as e:
-                        ui_print(f'[plex] error: item "{item.title}" could not be removed from {user[0]}\'s watchlist. {e}')
+                    username, token = get_user_info(user)
+                    if username and token:
+                        url = 'https://discover.provider.plex.tv/actions/removeFromWatchlist?ratingKey=' + item.ratingKey + '&X-Plex-Token=' + token
+                        try:
+                            response = session.put(url, data={'ratingKey': item.ratingKey})
+                            if response and response.status_code == 200:
+                                ui_print('[plex] item: "' + item.title + '" removed from ' + username + '`s watchlist')
+                            else:
+                                status_code = response.status_code if response else "No response"
+                                ui_print(f'[plex] error: item "{item.title}" could not be removed from {username}\'s watchlist (HTTP {status_code})')
+                        except Exception as e:
+                            ui_print(f'[plex] error: item "{item.title}" could not be removed from {username}\'s watchlist. {e}')
+                    else:
+                        ui_print(f'[plex] error: could not parse user info for item "{item.title}"', debug=ui_settings.debug)
                 if not self == [] and item in self.data:
                     self.data.remove(item)
             else:
-                url = 'https://discover.provider.plex.tv/actions/removeFromWatchlist?ratingKey=' + item.ratingKey + '&X-Plex-Token=' + item.user[1]
-                try:
-                    response = session.put(url, data={'ratingKey': item.ratingKey})
-                    if response and response.status_code == 200:
-                        ui_print('[plex] item: "' + item.title + '" removed from ' + item.user[0] + '`s watchlist')
-                    else:
-                        status_code = response.status_code if response else "No response"
-                        ui_print(f'[plex] error: item "{item.title}" could not be removed from {item.user[0]}\'s watchlist (HTTP {status_code})')
-                except Exception as e:
-                    ui_print(f'[plex] error: item "{item.title}" could not be removed from {item.user[0]}\'s watchlist. {e}')
+                # Format: [username, token] (single user, not nested) OR [dict/SimpleNamespace, ...]
+                username, token = get_user_info(item.user)
+                if username and token:
+                    url = 'https://discover.provider.plex.tv/actions/removeFromWatchlist?ratingKey=' + item.ratingKey + '&X-Plex-Token=' + token
+                    try:
+                        response = session.put(url, data={'ratingKey': item.ratingKey})
+                        if response and response.status_code == 200:
+                            ui_print('[plex] item: "' + item.title + '" removed from ' + username + '`s watchlist')
+                        else:
+                            status_code = response.status_code if response else "No response"
+                            ui_print(f'[plex] error: item "{item.title}" could not be removed from {username}\'s watchlist (HTTP {status_code})')
+                    except Exception as e:
+                        ui_print(f'[plex] error: item "{item.title}" could not be removed from {username}\'s watchlist. {e}')
+                else:
+                    ui_print(f'[plex] error: could not parse user info for item "{item.title}"', debug=ui_settings.debug)
                 if not self == [] and item in self.data:
                     self.data.remove(item)
 
