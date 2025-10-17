@@ -179,12 +179,16 @@ class ignore:
                     activeservices += [service]
         return activeservices
 
-    def add(self):
+    def add(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
         for service in ignore():
             ui_print("ignoring item of type '" + self.__module__ +
                      "' on service '" + service.__module__ + "'", ui_settings.debug)
             self.match(service.__module__)
-            service.add(self)
+            # Check if the service has a method that accepts watchlist parameters
+            if hasattr(service, 'add_with_watchlists'):
+                service.add_with_watchlists(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
+            else:
+                service.add(self)
 
     def remove(self):
         for service in ignore():
@@ -341,7 +345,7 @@ class media:
                     query = self.EID[0]
                 except:
                     query = "unknown"
-            if service not in ["content.services.textfile", "content.services.sqlite"]:
+            if service not in ["content.services.textfile", "content.services.sqlite", "content.services.watchlist_removal"]:
                 ui_print("matching item: '"+query+"' of service '" + self.__module__ +
                          "' to service '" + service + "'", ui_settings.debug)
             match = sys.modules[service].match(self)
@@ -960,7 +964,7 @@ class media:
             return len(Episodes) == 0
         return False
 
-    def watch(self):
+    def watch(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
         """
         Implements a retry mechanism for failed downloads by managing an ignore queue.
 
@@ -1006,7 +1010,7 @@ class media:
                 ui_print(message + ' - attempt ' + str(match.ignored_count) + '/' + str(retries))
             else:
                 media.ignore_queue.remove(match)
-                ignore.add(self)
+                ignore.add(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
 
     def unwatch(self):
         ignore.remove(self)
@@ -1348,7 +1352,7 @@ class media:
                         toc = time.perf_counter()
                         ui_print('took ' + str(round(toc - tic, 2)) + 's')
                     if retry:
-                        self.watch()
+                        self.watch(plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
         elif self.type == 'show':
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
@@ -1574,7 +1578,7 @@ class media:
                     if downloaded:
                         refresh_ = True
                     if retryep:
-                        episode.watch()
+                        episode.watch(plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
             return refresh_, (retry or retryep)
         elif self.type == 'episode':
             for release in parentReleases:
