@@ -356,6 +356,17 @@ def preflight():
         print()
         input('Press Enter to return to the main menu: ')
         return False
+    
+    # Validate ignore services for conflicts
+    try:
+        content.classes.ignore.validate_startup()
+    except Exception as e:
+        print()
+        print('Error validating ignore services: ' + str(e))
+        print()
+        input('Press Enter to return to the main menu: ')
+        return False
+    
     return True
 
 def run(cdir = "", smode = False):
