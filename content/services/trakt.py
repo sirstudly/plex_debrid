@@ -1041,7 +1041,7 @@ class library(classes.library):
                     print()
                     time.sleep(3)
 
-        def add(self):
+        def add(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None, library=None):
             global current_user
             try:
                 ignoreuser = library.ignore.user

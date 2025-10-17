@@ -15,7 +15,7 @@ class library():
         name = 'Local Ignore List'
         path = ''
         
-        def add(self):
+        def add(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None, library=None):
             try:
                 if not library.ignore.path.endswith("/"):
                     library.ignore.path = library.ignore.path + "/"

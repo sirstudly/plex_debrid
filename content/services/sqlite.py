@@ -30,8 +30,8 @@ class library():
                 ui_print('[sqlite] error: unknown media type: ' + str(media_type), debug=ui_settings.debug)
                 return None
 
-        def add(self):
-            """Mark a media item as ignored in the database."""
+        def add(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None, library=None):
+            """Mark a media item as ignored in the database and remove from watchlists."""
             try:
                 ui_print('[sqlite] marking item as ignored in database: ' + self.query())
                 
@@ -53,6 +53,20 @@ class library():
                 # Add to in-memory ignored list if not already there
                 if not self in classes.ignore.ignored:
                     classes.ignore.ignored += [self]
+                
+                # Remove from watchlists based on media type
+                if self.type == 'movie':
+                    # For movies, remove from all watchlists
+                    ui_print('[sqlite] removing movie from all watchlists: ' + self.query())
+                    self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
+                elif self.type == 'episode':
+                    # For episodes, remove from non-Plex watchlists only
+                    ui_print('[sqlite] removing episode from non-Plex watchlists: ' + self.query())
+                    self._remove_from_watchlist(self, None, trakt_watchlist, overseerr_requests, sqlite_requests)
+                    
+                    # Check if we should remove the entire show from all watchlists
+                    if plex_watchlist and library:
+                        self._check_and_remove_show_if_all_episodes_ignored(self, plex_watchlist, library, trakt_watchlist, overseerr_requests, sqlite_requests)
                     
             except Exception as e:
                 ui_print("[sqlite] error: couldnt mark item as ignored: " + str(e), debug=ui_settings.debug)
@@ -151,6 +165,67 @@ class library():
                 
             except Exception as e:
                 ui_print("[sqlite] error: couldnt sync from database: " + str(e), debug=ui_settings.debug)
+
+        def _check_and_remove_show_if_all_episodes_ignored(self, episode, plex_watchlist, library, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
+            """Check if all uncollected/released episodes of a show are ignored, and if so, remove the show from all watchlists."""
+            try:
+                # Find the show that contains this episode
+                show = None
+                for item in plex_watchlist.data:
+                    if item.type == 'show' and hasattr(item, 'Seasons'):
+                        for season in item.Seasons:
+                            if episode in season.Episodes:
+                                show = item
+                                break
+                        if show:
+                            break
+                
+                if not show:
+                    ui_print('[sqlite] could not find show for episode: ' + episode.query(), debug=ui_settings.debug)
+                    return
+                
+                # Get all uncollected/released episodes for this show using the show's uncollected() method
+                uncollected_seasons = show.uncollected(library)
+                uncollected_episodes = []
+                for season in uncollected_seasons:
+                    uncollected_episodes.extend(season.Episodes)
+                
+                if not uncollected_episodes:
+                    ui_print('[sqlite] no uncollected episodes found for show: ' + show.title, debug=ui_settings.debug)
+                    return
+                
+                # Check if all uncollected episodes are in the ignored list
+                ignored_episodes = [ep for ep in uncollected_episodes if ep in classes.ignore.ignored]
+                
+                if len(ignored_episodes) == len(uncollected_episodes):
+                    # Only remove completed shows, not continuing series
+                    if show.hasended():
+                        ui_print('[sqlite] all uncollected episodes of completed show "' + show.title + '" are ignored. Removing show from all watchlists.')
+                        
+                        # Remove the show from all watchlists
+                        show._remove_from_watchlist(show, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
+                        
+                        # Clear all episodes of this show from the ignored list
+                        episodes_to_remove = []
+                        for ignored_item in classes.ignore.ignored:
+                            if ignored_item.type == 'episode':
+                                # Check if this episode belongs to the show we're removing
+                                for season in show.Seasons:
+                                    if ignored_item in season.Episodes:
+                                        episodes_to_remove.append(ignored_item)
+                                        break
+                        
+                        for ep in episodes_to_remove:
+                            classes.ignore.ignored.remove(ep)
+                        
+                        ui_print('[sqlite] removed ' + str(len(episodes_to_remove)) + ' episodes from ignored list for show: ' + show.title)
+                    else:
+                        ui_print('[sqlite] all uncollected episodes of continuing series "' + show.title + '" are ignored, but keeping show in watchlist for future episodes.')
+                else:
+                    ui_print('[sqlite] ' + str(len(ignored_episodes)) + '/' + str(len(uncollected_episodes)) + ' episodes ignored for show: ' + show.title, debug=ui_settings.debug)
+                    
+            except Exception as e:
+                ui_print("[sqlite] error checking show removal: " + str(e), debug=ui_settings.debug)
 
 
 class watchlist(classes.watchlist):

@@ -171,62 +171,6 @@ class ignore:
             if not cls.name in ignore.active:
                 ignore.active += [cls.name]
         
-        # Validate that conflicting ignore services are not both active
-        ignore._validate_mutually_exclusive_services()
-
-    @staticmethod
-    def _validate_mutually_exclusive_services():
-        """Validate that conflicting ignore services are not both active."""
-        sqlite_active = 'SQLite Database Ignore Service' in ignore.active
-        watchlist_removal_active = 'Watchlist Removal Ignore Service' in ignore.active
-        
-        if sqlite_active and watchlist_removal_active:
-            print()
-            print("=" * 80)
-            print("ERROR: Conflicting ignore services detected!")
-            print("=" * 80)
-            print()
-            print("You cannot use both 'SQLite Database Ignore Service' and 'Watchlist Removal Ignore Service'")
-            print("simultaneously because they have conflicting approaches:")
-            print()
-            print("• SQLite Database Ignore Service:")
-            print("  - Stores ignored items persistently in database")
-            print("  - Does NOT remove items from watchlists")
-            print("  - Items stay in watchlists but are marked as ignored")
-            print()
-            print("• Watchlist Removal Ignore Service:")
-            print("  - Removes items from watchlists instead of storing them")
-            print("  - Does NOT store ignored items persistently")
-            print("  - Items are removed from watchlists when ignored")
-            print()
-            print("Please choose only ONE ignore service that fits your needs:")
-            print()
-            print("1. Use 'SQLite Database Ignore Service' if you want:")
-            print("   - Persistent ignore tracking across restarts")
-            print("   - Items to stay in watchlists but be marked as ignored")
-            print("   - Database-based ignore management")
-            print()
-            print("2. Use 'Watchlist Removal Ignore Service' if you want:")
-            print("   - Items to be removed from watchlists when ignored")
-            print("   - Clean watchlists without ignored items")
-            print("   - Fresh start capability when re-adding items")
-            print()
-            print("=" * 80)
-            print()
-            
-            # Remove the conflicting services from active list
-            ignore.active = [service for service in ignore.active 
-                           if service not in ['SQLite Database Ignore Service', 'Watchlist Removal Ignore Service']]
-            
-            print("Both conflicting services have been removed from the active list.")
-            print("Please reconfigure your ignore services in the settings.")
-            print()
-            input("Press Enter to continue...")
-
-    @staticmethod
-    def validate_startup():
-        """Validate ignore services on startup to catch any existing conflicts."""
-        ignore._validate_mutually_exclusive_services()
 
     def __new__(cls):
         activeservices = []
@@ -241,11 +185,8 @@ class ignore:
             ui_print("ignoring item of type '" + self.__module__ +
                      "' on service '" + service.__module__ + "'", ui_settings.debug)
             self.match(service.__module__)
-            # Check if the service has a method that accepts watchlist parameters
-            if hasattr(service, 'add_with_watchlists'):
-                service.add_with_watchlists(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests, library)
-            else:
-                service.add(self)
+            # Pass watchlist parameters to the service's add method
+            service.add(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests, library)
 
     def remove(self):
         for service in ignore():
@@ -402,7 +343,7 @@ class media:
                     query = self.EID[0]
                 except:
                     query = "unknown"
-            if service not in ["content.services.textfile", "content.services.sqlite", "content.services.watchlist_removal"]:
+            if service not in ["content.services.textfile", "content.services.sqlite"]:
                 ui_print("matching item: '"+query+"' of service '" + self.__module__ +
                          "' to service '" + service + "'", ui_settings.debug)
             match = sys.modules[service].match(self)
