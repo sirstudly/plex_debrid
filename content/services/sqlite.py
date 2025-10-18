@@ -39,7 +39,7 @@ class library():
                 conn = sqlite_store._get_connection()
                 
                 # Determine which table to update based on media type
-                table = library.ignore._get_table_name(self.type)
+                table = self._get_table_name(self.type)
                 if table is None:
                     return
                 
@@ -80,7 +80,7 @@ class library():
                 conn = sqlite_store._get_connection()
                 
                 # Determine which table to update based on media type
-                table = library.ignore._get_table_name(self.type)
+                table = self._get_table_name(self.type)
                 if table is None:
                     return
                 
@@ -105,7 +105,7 @@ class library():
                 conn = sqlite_store._get_connection()
                 
                 # Determine which table to query based on media type
-                table = library.ignore._get_table_name(self.type)
+                table = self._get_table_name(self.type)
                 if table is None:
                     return False
                 

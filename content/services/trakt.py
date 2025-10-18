@@ -188,7 +188,8 @@ def get(url):
             if new_tokens is None:
                 return None, None
             current_user[1] = new_tokens
-        
+
+        ui_print("[trakt] get " + url, ui_settings.debug)
         response = session.get(url, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Content-type': "application/json", "trakt-api-key": client_id, "trakt-api-version": "2",
