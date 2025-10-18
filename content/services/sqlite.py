@@ -30,7 +30,7 @@ class library():
                 ui_print('[sqlite] error: unknown media type: ' + str(media_type), debug=ui_settings.debug)
                 return None
 
-        def add(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None, library=None):
+        def add(self, plex_watchlist=None, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None, library_obj=None):
             """Mark a media item as ignored in the database and remove from watchlists."""
             try:
                 ui_print('[sqlite] marking item as ignored in database: ' + self.query())
@@ -39,7 +39,7 @@ class library():
                 conn = sqlite_store._get_connection()
                 
                 # Determine which table to update based on media type
-                table = self._get_table_name(self.type)
+                table = library.ignore._get_table_name(self.type)
                 if table is None:
                     return
                 
@@ -65,8 +65,8 @@ class library():
                     self._remove_from_watchlist(self, None, trakt_watchlist, overseerr_requests, sqlite_requests)
                     
                     # Check if we should remove the entire show from all watchlists
-                    if plex_watchlist and library:
-                        self._check_and_remove_show_if_all_episodes_ignored(self, plex_watchlist, library, trakt_watchlist, overseerr_requests, sqlite_requests)
+                    if plex_watchlist and library_obj:
+                        self._check_and_remove_show_if_all_episodes_ignored(self, plex_watchlist, library_obj, trakt_watchlist, overseerr_requests, sqlite_requests)
                     
             except Exception as e:
                 ui_print("[sqlite] error: couldnt mark item as ignored: " + str(e), debug=ui_settings.debug)
@@ -80,7 +80,7 @@ class library():
                 conn = sqlite_store._get_connection()
                 
                 # Determine which table to update based on media type
-                table = self._get_table_name(self.type)
+                table = library.ignore._get_table_name(self.type)
                 if table is None:
                     return
                 
@@ -105,7 +105,7 @@ class library():
                 conn = sqlite_store._get_connection()
                 
                 # Determine which table to query based on media type
-                table = self._get_table_name(self.type)
+                table = library.ignore._get_table_name(self.type)
                 if table is None:
                     return False
                 
@@ -166,7 +166,7 @@ class library():
             except Exception as e:
                 ui_print("[sqlite] error: couldnt sync from database: " + str(e), debug=ui_settings.debug)
 
-        def _check_and_remove_show_if_all_episodes_ignored(self, episode, plex_watchlist, library, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
+        def _check_and_remove_show_if_all_episodes_ignored(self, episode, plex_watchlist, library_obj, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
             """Check if all uncollected/released episodes of a show are ignored, and if so, remove the show from all watchlists."""
             try:
                 # Find the show that contains this episode
@@ -185,7 +185,7 @@ class library():
                     return
                 
                 # Get all uncollected/released episodes for this show using the show's uncollected() method
-                uncollected_seasons = show.uncollected(library)
+                uncollected_seasons = show.uncollected(library_obj)
                 uncollected_episodes = []
                 for season in uncollected_seasons:
                     uncollected_episodes.extend(season.Episodes)
