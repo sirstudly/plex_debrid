@@ -153,7 +153,11 @@ def setup(self, new=False):
 def logerror(response):
     if response.status_code not in [200, 201]:
         location = get_error_location()
-        ui_print("[trakt] error: " + str(response.content))
+        # Check if response content is empty
+        if not response.content or response.content == b'':
+            ui_print(f"[trakt] error: empty response (status {response.status_code})")
+        else:
+            ui_print(f"[trakt] error: {str(response.content)} (status {response.status_code})")
         ui_print("[trakt] (exception at " + location + ")", debug=ui_settings.debug)
     if response.status_code == 401:
         ui_print("[trakt] error: (401 unauthorized): trakt api key for user '" + current_user[0]
@@ -200,7 +204,11 @@ def get(url):
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
     except Exception as e:
         location = get_error_location()
-        ui_print("[trakt] error: " + str(e))
+        # Try to get status code if the exception is related to a response
+        status_info = ""
+        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            status_info = f" (status {e.response.status_code})"
+        ui_print("[trakt] error: " + str(e) + status_info)
         ui_print("[trakt] (exception at " + location + ")", ui_settings.debug)
         response = None
         header = None
@@ -226,7 +234,11 @@ def post(url, data):
         time.sleep(1.1)
     except Exception as e:
         location = get_error_location()
-        ui_print("[trakt] error: " + str(e))
+        # Try to get status code if the exception is related to a response
+        status_info = ""
+        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            status_info = f" (status {e.response.status_code})"
+        ui_print("[trakt] error: " + str(e) + status_info)
         ui_print("[trakt] (exception at " + location + ")", ui_settings.debug)
         response = None
     return response
@@ -235,7 +247,11 @@ def post2(url, data):
     try:
         response = session.post(url, headers={'Content-type': "application/json"}, data=data)
         if response.status_code not in [200, 201]:
-            ui_print(f"[trakt] error {response.status_code}: " + str(response.content), ui_settings.debug)
+            # Check if response content is empty
+            if not response.content or response.content == b'':
+                ui_print(f"[trakt] error: empty response (status {response.status_code})", ui_settings.debug)
+            else:
+                ui_print(f"[trakt] error {response.status_code}: " + str(response.content), ui_settings.debug)
             return None
         response = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
         time.sleep(1.1)
@@ -273,7 +289,11 @@ def oauth(code=""):
             }
             return token_data
         else:
-            ui_print(f"[trakt] oauth error: status({response.status_code}) {str(response.content)}")
+            # Check if response content is empty
+            if not response.content or response.content == b'':
+                ui_print(f"[trakt] oauth error: empty response (status {response.status_code})")
+            else:
+                ui_print(f"[trakt] oauth error: status({response.status_code}) {str(response.content)}")
             return None
 
 def should_refresh_token(user_tokens):

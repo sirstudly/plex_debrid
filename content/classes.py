@@ -1674,7 +1674,7 @@ class media:
                 # Filter out releases that are blacklisted or downloaded
                 filtered_releases = []
                 for release in self.Releases:
-                    if not sqlite_store.is_release_at_status(self, release, ['blacklisted', 'downloaded', 'pending']):
+                    if not sqlite_store.is_release_at_status(self, release, ['blacklisted', 'downloaded']):
                         filtered_releases.append(release)
                         sqlite_store.upsert_release(self, release, downloaded=False)
                     else:
