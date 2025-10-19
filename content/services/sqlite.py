@@ -322,7 +322,7 @@ class watchlist(classes.watchlist):
                         'year': year,
                         'watchlistedAt': time.mktime(time.strptime(requested_at, '%Y-%m-%d %H:%M:%S')) if requested_at else time.time(),
                         'user': [['Local User', 'local']],  # Local user identifier
-                        'query': lambda: f"movie:{media_title or release_title} ({year})" if media_title and year else f"movie:{release_title}",
+                        'query': lambda title="": f"movie:{media_title or release_title} ({year})" if media_title and year else f"movie:{release_title}",
                         'EID': [],
                         'local_request_hash': release_hash,
                         'local_request_title': release_title
