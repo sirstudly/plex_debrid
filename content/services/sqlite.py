@@ -294,12 +294,26 @@ class watchlist(classes.watchlist):
             # Get database connection
             conn = sqlite_store._get_connection()
             
-            # Query for new local requests
+            # Query for new local requests from all media tables
             cursor = conn.execute("""
                 SELECT mr.guid, mr.hash, mr.title, mr.requested_at,
-                       m.title as media_title, m.year, m.imdb, m.tmdb, m.tvdb
+                       COALESCE(m.title, s.title, se.title, e.title) as media_title,
+                       COALESCE(m.year, s.year, se.year, e.year) as year,
+                       COALESCE(m.imdb, s.imdb, se.imdb, e.imdb) as imdb,
+                       COALESCE(m.tmdb, s.tmdb, se.tmdb, e.tmdb) as tmdb,
+                       COALESCE(m.tvdb, s.tvdb, se.tvdb, e.tvdb) as tvdb,
+                       CASE 
+                           WHEN m.guid IS NOT NULL THEN 'movie'
+                           WHEN s.guid IS NOT NULL THEN 'show'
+                           WHEN se.guid IS NOT NULL THEN 'season'
+                           WHEN e.guid IS NOT NULL THEN 'episode'
+                           ELSE 'movie'  -- Default fallback
+                       END as media_type
                 FROM media_release mr
                 LEFT JOIN media_movie m ON mr.guid = m.guid
+                LEFT JOIN media_show s ON mr.guid = s.guid
+                LEFT JOIN media_season se ON mr.guid = se.guid
+                LEFT JOIN media_episode e ON mr.guid = e.guid
                 WHERE mr.status = 'pending' AND mr.requested_at IS NOT NULL
                 ORDER BY mr.requested_at DESC
             """)
@@ -308,7 +322,7 @@ class watchlist(classes.watchlist):
             new_requests = []
             
             for row in results:
-                guid, release_hash, release_title, requested_at, media_title, year, imdb, tmdb, tvdb = row
+                guid, release_hash, release_title, requested_at, media_title, year, imdb, tmdb, tvdb, media_type = row
                 
                 # Check if this request is already in our data
                 existing = next((item for item in self.data if item.guid == guid and getattr(item, 'local_request_hash', None) == release_hash), None)
@@ -317,15 +331,24 @@ class watchlist(classes.watchlist):
                     # Create a media object for the new local request
                     media_obj = type('LocalRequest', (), {
                         'guid': guid,
-                        'type': 'movie',  # We'll need to determine this from the media tables
+                        'type': media_type,  # Use the determined media type from the database
                         'title': media_title or release_title,
                         'year': year,
                         'watchlistedAt': time.mktime(time.strptime(requested_at, '%Y-%m-%d %H:%M:%S')) if requested_at else time.time(),
                         'user': [['Local User', 'local']],  # Local user identifier
-                        'query': lambda title="": f"movie:{media_title or release_title} ({year})" if media_title and year else f"movie:{release_title}",
+                        'query': lambda title="": f"{media_type}:{media_title or release_title} ({year})" if media_title and year else f"{media_type}:{release_title}",
                         'EID': [],
                         'local_request_hash': release_hash,
-                        'local_request_title': release_title
+                        'local_request_title': release_title,
+                        # Add missing attributes that might be needed for comparison
+                        'index': None,  # For seasons
+                        'parentIndex': None,  # For episodes
+                        'parentGuid': None,  # For seasons/episodes
+                        'parentEID': [],  # For seasons/episodes
+                        'grandparentGuid': None,  # For episodes
+                        'grandparentEID': [],  # For episodes
+                        'parentTitle': None,  # For seasons/episodes
+                        'grandparentTitle': None  # For episodes
                     })()
                     
                     # Add EID if available
