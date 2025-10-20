@@ -269,6 +269,16 @@
                         </select>
                     </div>
                     <div class="col-md-2">
+                        <label class="form-label small mb-1">Status:</label>
+                        <select class="form-select form-select-sm" id="status-filter">
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="downloading">Downloading</option>
+                            <option value="ignored">Ignored</option>
+                            <option value="collected">Collected</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
                         <label class="form-label small mb-1">Year:</label>
                         <select class="form-select form-select-sm" id="year-filter">
                             <option value="">All Years</option>
@@ -340,7 +350,7 @@
             <div class="tab-pane fade show active" id="pending" role="tabpanel">
                 <div class="card mt-3">
                     <div class="card-header">
-                        <h5 class="mb-0">Pending Items</h5>
+                        <h5 class="mb-0">Matched Items</h5>
                     </div>
                     <div class="card-body">
                         <div id="pending-loading" class="loading text-center">
@@ -540,7 +550,13 @@
             contentEl.innerHTML = '';
             
             try {
+                // Use general media endpoint if status filter is applied, otherwise use specific endpoint
+                const statusFilter = document.getElementById('status-filter');
                 let url = '/api/pending';
+                if (statusFilter && statusFilter.value) {
+                    url = '/api/media';
+                }
+                
                 const params = new URLSearchParams();
                 if (type) {
                     params.append('media_type', type);
@@ -556,6 +572,12 @@
                 
                 if (sourceFilter && sourceFilter.value) {
                     params.append('source', sourceFilter.value);
+                }
+                if (statusFilter && statusFilter.value) {
+                    params.append('status', statusFilter.value);
+                } else if (url === '/api/media') {
+                    // If using general endpoint without status filter, default to pending
+                    params.append('status', 'pending');
                 }
                 if (yearFilter && yearFilter.value) {
                     params.append('year', yearFilter.value);
@@ -612,7 +634,13 @@
             contentEl.innerHTML = '';
             
             try {
+                // Use general media endpoint if status filter is applied, otherwise use specific endpoint
+                const statusFilter = document.getElementById('status-filter');
                 let url = '/api/downloading';
+                if (statusFilter && statusFilter.value) {
+                    url = '/api/media';
+                }
+                
                 const params = new URLSearchParams();
                 if (type) {
                     params.append('media_type', type);
@@ -628,6 +656,12 @@
                 
                 if (sourceFilter && sourceFilter.value) {
                     params.append('source', sourceFilter.value);
+                }
+                if (statusFilter && statusFilter.value) {
+                    params.append('status', statusFilter.value);
+                } else if (url === '/api/media') {
+                    // If using general endpoint without status filter, default to downloading
+                    params.append('status', 'downloading');
                 }
                 if (yearFilter && yearFilter.value) {
                     params.append('year', yearFilter.value);
@@ -684,7 +718,13 @@
             contentEl.innerHTML = '';
             
             try {
+                // Use general media endpoint if status filter is applied, otherwise use specific endpoint
+                const statusFilter = document.getElementById('status-filter');
                 let url = '/api/ignored';
+                if (statusFilter && statusFilter.value) {
+                    url = '/api/media';
+                }
+                
                 const params = new URLSearchParams();
                 if (type) {
                     params.append('media_type', type);
@@ -700,6 +740,12 @@
                 
                 if (sourceFilter && sourceFilter.value) {
                     params.append('source', sourceFilter.value);
+                }
+                if (statusFilter && statusFilter.value) {
+                    params.append('status', statusFilter.value);
+                } else if (url === '/api/media') {
+                    // If using general endpoint without status filter, default to ignored
+                    params.append('status', 'ignored');
                 }
                 if (yearFilter && yearFilter.value) {
                     params.append('year', yearFilter.value);
@@ -1070,6 +1116,7 @@
         // Setup advanced filters
         function setupAdvancedFilters() {
             const sourceFilter = document.getElementById('source-filter');
+            const statusFilter = document.getElementById('status-filter');
             const yearFilter = document.getElementById('year-filter');
             const sortBy = document.getElementById('sort-by');
             
@@ -1080,6 +1127,14 @@
             
             if (sourceFilter) {
                 sourceFilter.addEventListener('change', function() {
+                    // Reset to page 1 and reload current tab with current filter
+                    currentPage = 1;
+                    loadCurrentTabItems(currentFilter, 1);
+                });
+            }
+            
+            if (statusFilter) {
+                statusFilter.addEventListener('change', function() {
                     // Reset to page 1 and reload current tab with current filter
                     currentPage = 1;
                     loadCurrentTabItems(currentFilter, 1);
@@ -1144,11 +1199,17 @@
             try {
                 // Get current filters
                 const sourceFilter = document.getElementById('source-filter');
+                const statusFilter = document.getElementById('status-filter');
                 const yearFilter = document.getElementById('year-filter');
                 const searchInput = document.getElementById('search-input');
                 const sortBy = document.getElementById('sort-by');
                 
+                // Use general media endpoint if status filter is applied, otherwise use specific endpoint
                 let url = `/api/${currentTab}`;
+                if (statusFilter && statusFilter.value) {
+                    url = '/api/media';
+                }
+                
                 const params = new URLSearchParams();
                 
                 if (currentFilter) {
@@ -1158,6 +1219,12 @@
                 
                 if (sourceFilter && sourceFilter.value) {
                     params.append('source', sourceFilter.value);
+                }
+                if (statusFilter && statusFilter.value) {
+                    params.append('status', statusFilter.value);
+                } else if (url === '/api/media') {
+                    // If using general endpoint without status filter, default to current tab status
+                    params.append('status', currentTab);
                 }
                 if (yearFilter && yearFilter.value) {
                     params.append('year', yearFilter.value);
