@@ -7,6 +7,7 @@ import debrid
 from ui import ui_settings
 from ui.ui_print import *
 from settings import *
+from store import sqlite_store
 
 #import uvicorn
 
@@ -562,6 +563,45 @@ def threaded(stop):
                 ui_print("couldnt sort monitored media by newest, using default order.", ui_settings.debug)
             library = content.classes.library()[0]()
             timeout_counter = 0
+            
+            # Update database with current collected status for entire library
+            ui_print('updating database status ...')
+            try:
+                # Update all library items (items that exist in the library)
+                library_updated = 0
+                for item in library:
+                    try:
+                        # Library items are considered "collected" by definition
+                        # We'll update them with source based on the library service
+                        library_source = 'plex'  # Default, could be enhanced to detect actual source
+                        if hasattr(library, '__module__'):
+                            if 'trakt' in library.__module__:
+                                library_source = 'trakt'
+                            elif 'jellyfin' in library.__module__:
+                                library_source = 'jellyfin'
+                        
+                        sqlite_store.update_db(item, library, source=library_source)
+                        library_updated += 1
+                    except Exception as e:
+                        ui_print(f"error updating library item {getattr(item, 'title', 'unknown')}: {str(e)}", debug=ui_settings.debug)
+                        continue
+                
+                # Also update watchlisted items (they may not be in library yet)
+                watchlist_updated = 0
+                for item in unique(watchlists):
+                    if hasattr(item, 'download'):
+                        # Determine source
+                        source = 'plex'  # Default
+                        if hasattr(item, 'watchlist') and hasattr(item.watchlist, '__module__'):
+                            source = item.watchlist.__module__.split('.')[-1]
+                        # Update database with current status
+                        sqlite_store.update_db(item, library, source=source)
+                        watchlist_updated += 1
+                
+                ui_print(f'done - updated {library_updated} library items, {watchlist_updated} watchlist items')
+            except Exception as e:
+                ui_print(f"error updating database status: {str(e)}", debug=ui_settings.debug)
+            
             ui_print('checking new content ...')
             t0 = time.time()
             for element in unique(watchlists):
