@@ -1181,16 +1181,33 @@ class media:
                 if not hasattr(match, 'leafCount'):
                     ui_print(f"[collected check]: show '{self.title}' found in library but has no leafCount", debug=ui_settings.debug)
                     return False
-                if match.leafCount == self.leafCount:
+                # A show is collected only if ALL its seasons are collected
+                if not hasattr(self, 'Seasons') or not self.Seasons:
+                    # If no seasons defined, fall back to leaf count comparison
+                    if match.leafCount == self.leafCount:
+                        return True
+                    ui_print(f"[collected check]: show '{self.title}' leafCount mismatch - library: {match.leafCount}, watchlist: {self.leafCount}", debug=ui_settings.debug)
+                    return False
+                
+                # Check if all seasons are collected
+                all_seasons_collected = True
+                for season in self.Seasons:
+                    if not season.collected(list):
+                        all_seasons_collected = False
+                        ui_print(f"[collected check]: show '{self.title}' season '{season.title}' not collected", debug=ui_settings.debug)
+                        break
+                
+                if all_seasons_collected:
                     return True
-                ui_print(f"[collected check]: show '{self.title}' leafCount mismatch - library: {match.leafCount}, watchlist: {self.leafCount}", debug=ui_settings.debug)
+                else:
+                    ui_print(f"[collected check]: show '{self.title}' has uncollected seasons", debug=ui_settings.debug)
             return False
         if self.type == "season":
             for show in list:
                 if show.type == "show":
                     for season in show.Seasons:
                         if self == season:
-                            if season.leafCount == self.leafCount:
+                            if season.leafCount >= self.leafCount:
                                 return True
                             ui_print(f"[collected check]: season '{self.parentTitle} {self.title}' leafCount mismatch - library: {season.leafCount}, watchlist: {self.leafCount}", debug=ui_settings.debug)
                             return False
