@@ -304,18 +304,49 @@ class media:
                 return self.guid == other.guid
             elif self.type == 'season':
                 if hasattr(self, "parentEID") and hasattr(other, "parentEID"):
+                    self_index = getattr(self, 'index', None)
+                    other_index = getattr(other, 'index', None)
+                    if self_index is None or other_index is None:
+                        return False
                     for EID in self.parentEID:
-                        if EID in other.parentEID and self.index == other.index:
+                        if EID in other.parentEID and self_index == other_index:
                             return True
                     return False
-                return self.parentGuid == other.parentGuid and self.index == other.index
+                self_parent_guid = getattr(self, 'parentGuid', None)
+                other_parent_guid = getattr(other, 'parentGuid', None)
+                self_index = getattr(self, 'index', None)
+                other_index = getattr(other, 'index', None)
+                if self_parent_guid is None or other_parent_guid is None:
+                    return False
+                if self_index is None or other_index is None:
+                    return False
+                return self_parent_guid == other_parent_guid and self_index == other_index
             elif self.type == 'episode':
                 if hasattr(self, "grandparentEID") and hasattr(other, "grandparentEID"):
+                    self_parent_index = getattr(self, 'parentIndex', None)
+                    other_parent_index = getattr(other, 'parentIndex', None)
+                    self_index = getattr(self, 'index', None)
+                    other_index = getattr(other, 'index', None)
+                    if (self_parent_index is None or other_parent_index is None or
+                            self_index is None or other_index is None):
+                        return False
                     for EID in self.grandparentEID:
-                        if EID in other.grandparentEID and self.parentIndex == other.parentIndex and self.index == other.index:
+                        if EID in other.grandparentEID and self_parent_index == other_parent_index and self_index == other_index:
                             return True
                     return False
-                return self.grandparentGuid == other.grandparentGuid and self.parentIndex == other.parentIndex and self.index == other.index
+                self_grandparent_guid = getattr(self, 'grandparentGuid', None)
+                other_grandparent_guid = getattr(other, 'grandparentGuid', None)
+                self_parent_index = getattr(self, 'parentIndex', None)
+                other_parent_index = getattr(other, 'parentIndex', None)
+                self_index = getattr(self, 'index', None)
+                other_index = getattr(other, 'index', None)
+                if (self_grandparent_guid is None or other_grandparent_guid is None or
+                        self_parent_index is None or other_parent_index is None or
+                        self_index is None or other_index is None):
+                    return False
+                return (self_grandparent_guid == other_grandparent_guid and
+                        self_parent_index == other_parent_index and
+                        self_index == other_index)
         except Exception as e:
             ui_print(f"[comparison error]: Failed to compare {self.type} items: {str(e)}", debug=ui_settings.debug)
             return False
