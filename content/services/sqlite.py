@@ -299,9 +299,9 @@ class watchlist(classes.watchlist):
                 SELECT mr.guid, mr.hash, mr.title, mr.requested_at,
                        COALESCE(m.title, s.title, se.title, e.title) as media_title,
                        COALESCE(m.year, s.year, se.year, e.year) as year,
-                       COALESCE(m.imdb, s.imdb, se.imdb, e.imdb) as imdb,
-                       COALESCE(m.tmdb, s.tmdb, se.tmdb, e.tmdb) as tmdb,
-                       COALESCE(m.tvdb, s.tvdb, se.tvdb, e.tvdb) as tvdb,
+                       COALESCE(m.imdb, s.imdb) as imdb,
+                       COALESCE(m.tmdb, s.tmdb) as tmdb,
+                       COALESCE(m.tvdb, s.tvdb) as tvdb,
                        CASE 
                            WHEN m.guid IS NOT NULL THEN 'movie'
                            WHEN s.guid IS NOT NULL THEN 'show'
