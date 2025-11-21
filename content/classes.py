@@ -749,13 +749,16 @@ class media:
                 for gen in self.Genre:
                     genres += [gen.slug]
         if self.type == "show":
-            for season in self.Seasons:
-                season.parentGenre = genres
-                for episode in season.Episodes:
-                    episode.grandparentGenre = genres
+            if hasattr(self, 'Seasons'):
+                for season in self.Seasons:
+                    season.parentGenre = genres
+                    if hasattr(season, 'Episodes'):
+                        for episode in season.Episodes:
+                            episode.grandparentGenre = genres
         if self.type == "season":
-            for episode in self.Episodes:
-                episode.grandparentGenre = genres
+            if hasattr(self, 'Episodes'):
+                for episode in self.Episodes:
+                    episode.grandparentGenre = genres
         return genres
 
     def versions(self, quick=False):
@@ -765,22 +768,25 @@ class media:
         if not hasattr(self, "downloaded_releases"):
             self.downloaded_releases = []
         if self.type == "show":
-            for season in self.Seasons:
-                if not hasattr(season, "existing_releases"):
-                    season.existing_releases = []
-                if not hasattr(season, "downloaded_releases"):
-                    season.downloaded_releases = []
-                for episode in season.Episodes:
+            if hasattr(self, 'Seasons'):
+                for season in self.Seasons:
+                    if not hasattr(season, "existing_releases"):
+                        season.existing_releases = []
+                    if not hasattr(season, "downloaded_releases"):
+                        season.downloaded_releases = []
+                    if hasattr(season, 'Episodes'):
+                        for episode in season.Episodes:
+                            if not hasattr(episode, "existing_releases"):
+                                episode.existing_releases = []
+                            if not hasattr(episode, "downloaded_releases"):
+                                episode.downloaded_releases = []
+        if self.type == "season":
+            if hasattr(self, 'Episodes'):
+                for episode in self.Episodes:
                     if not hasattr(episode, "existing_releases"):
                         episode.existing_releases = []
                     if not hasattr(episode, "downloaded_releases"):
                         episode.downloaded_releases = []
-        if self.type == "season":
-            for episode in self.Episodes:
-                if not hasattr(episode, "existing_releases"):
-                    episode.existing_releases = []
-                if not hasattr(episode, "downloaded_releases"):
-                    episode.downloaded_releases = []
         # get all versions
         versions = []
         for version in releases.sort.versions:
@@ -803,20 +809,23 @@ class media:
                 if self.query() + ' [' + version.name + ']' in media.downloaded_versions:
                     versions.remove(version)
             elif self.type == 'show':
-                for season in self.Seasons:
-                    for episode in season.Episodes:
-                        if not episode.query() + ' [' + version.name + ']' in media.downloaded_versions:
-                            missing = True
+                if hasattr(self, 'Seasons'):
+                    for season in self.Seasons:
+                        if hasattr(season, 'Episodes'):
+                            for episode in season.Episodes:
+                                if not episode.query() + ' [' + version.name + ']' in media.downloaded_versions:
+                                    missing = True
+                                    break
+                        if missing == True:
                             break
-                    if missing == True:
-                        break
                 if not missing:
                     versions.remove(version)
             elif self.type == 'season':
-                for episode in self.Episodes:
-                    if not episode.query() + ' [' + version.name + ']' in media.downloaded_versions:
-                        missing = True
-                        break
+                if hasattr(self, 'Episodes'):
+                    for episode in self.Episodes:
+                        if not episode.query() + ' [' + version.name + ']' in media.downloaded_versions:
+                            missing = True
+                            break
                 if not missing:
                     versions.remove(version)
         if quick:
@@ -860,15 +869,37 @@ class media:
                                 version.name + " upgrade", version.triggers, version.lang, upgrade_rules)]
                             break
             elif self.type == 'show':
-                for season in self.Seasons:
-                    for episode in season.Episodes:
+                if hasattr(self, 'Seasons'):
+                    for season in self.Seasons:
+                        if hasattr(season, 'Episodes'):
+                            for episode in season.Episodes:
+                                if not episode.query() + ' [' + version.name + " upgrade]" in media.downloaded_versions:
+                                    for rule in version.rules:
+                                        if not rule[1] == "upgrade":
+                                            continue
+                                        if releases.sort.version.rule(rule[0], rule[1], rule[2], rule[3]).upgrade(episode.existing_releases):
+                                            upgrade_rules = copy.deepcopy(
+                                                version.rules)
+                                            for i, rule_ in enumerate(version.rules):
+                                                if rule_[1] == "upgrade":
+                                                    upgrade_rules[i][1] = "requirement"
+                                            versions += [releases.sort.version(
+                                                version.name + " upgrade", version.triggers, version.lang, upgrade_rules)]
+                                            added = True
+                                            break
+                                    if added:
+                                        break
+                        if added:
+                            break
+            elif self.type == "season":
+                if hasattr(self, 'Episodes'):
+                    for episode in self.Episodes:
                         if not episode.query() + ' [' + version.name + " upgrade]" in media.downloaded_versions:
                             for rule in version.rules:
                                 if not rule[1] == "upgrade":
                                     continue
                                 if releases.sort.version.rule(rule[0], rule[1], rule[2], rule[3]).upgrade(episode.existing_releases):
-                                    upgrade_rules = copy.deepcopy(
-                                        version.rules)
+                                    upgrade_rules = copy.deepcopy(version.rules)
                                     for i, rule_ in enumerate(version.rules):
                                         if rule_[1] == "upgrade":
                                             upgrade_rules[i][1] = "requirement"
@@ -878,25 +909,6 @@ class media:
                                     break
                             if added:
                                 break
-                    if added:
-                        break
-            elif self.type == "season":
-                for episode in self.Episodes:
-                    if not episode.query() + ' [' + version.name + " upgrade]" in media.downloaded_versions:
-                        for rule in version.rules:
-                            if not rule[1] == "upgrade":
-                                continue
-                            if releases.sort.version.rule(rule[0], rule[1], rule[2], rule[3]).upgrade(episode.existing_releases):
-                                upgrade_rules = copy.deepcopy(version.rules)
-                                for i, rule_ in enumerate(version.rules):
-                                    if rule_[1] == "upgrade":
-                                        upgrade_rules[i][1] = "requirement"
-                                versions += [releases.sort.version(
-                                    version.name + " upgrade", version.triggers, version.lang, upgrade_rules)]
-                                added = True
-                                break
-                        if added:
-                            break
         if len(versions) > 0:
             versions
         return versions
