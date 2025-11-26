@@ -238,6 +238,108 @@ def settings():
             load(doprint=True)
             back = True
 
+def list_broken_media():
+    ui_cls('Options/List Broken Media/')
+    import content.services.plex as plex
+    
+    if not plex.users:
+        print("Error: No Plex users configured.")
+        print()
+        print('Press Enter to return to the main menu.')
+        input()
+        return
+    
+    if not hasattr(plex.library, 'url') or not plex.library.url:
+        print("Error: Plex library URL not configured.")
+        print()
+        print('Press Enter to return to the main menu.')
+        input()
+        return
+    
+    print('Querying Plex for broken media...')
+    print()
+    
+    broken_items = []
+    
+    try:
+        # Get library sections
+        url = plex.library.url + '/library/sections/?X-Plex-Token=' + plex.users[0][1]
+        response = plex.get(plex.session, url)
+        
+        if not response or not hasattr(response, 'MediaContainer') or not hasattr(response.MediaContainer, 'Directory'):
+            print("Error: Could not retrieve library sections from Plex.")
+            print()
+            print('Press Enter to return to the main menu.')
+            input()
+            return
+        
+        sections = []
+        for Directory in response.MediaContainer.Directory:
+            if Directory.type in ["movie", "show"]:
+                types = ['1'] if Directory.type == "movie" else ['2', '3', '4']
+                sections.append((Directory.key, types, Directory.title))
+        
+        if not sections:
+            print("No library sections found.")
+            print()
+            print('Press Enter to return to the main menu.')
+            input()
+            return
+        
+        # Query each section for broken media (trash=1)
+        for section_key, types, section_title in sections:
+            for type_code in types:
+                url = plex.library.url + '/library/sections/' + section_key + '/all?type=' + type_code + '&trash=1&X-Plex-Token=' + plex.users[0][1]
+                response = plex.get(plex.session, url)
+                
+                if response and hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
+                    for element in response.MediaContainer.Metadata:
+                        # Get the name
+                        if hasattr(element, 'title'):
+                            name = element.title
+                            if hasattr(element, 'grandparentTitle'):
+                                # Episode
+                                name = f"{element.grandparentTitle} - {element.parentTitle} - {name}"
+                            elif hasattr(element, 'parentTitle'):
+                                # Season
+                                name = f"{element.parentTitle} - {name}"
+                        else:
+                            name = "Unknown"
+                        
+                        # Get the filename(s)
+                        filenames = []
+                        if hasattr(element, 'Media'):
+                            for Media in element.Media:
+                                if hasattr(Media, 'Part'):
+                                    for Part in Media.Part:
+                                        if hasattr(Part, 'file'):
+                                            filenames.append(Part.file)
+                        
+                        if filenames:
+                            for filename in filenames:
+                                broken_items.append((name, filename))
+                        else:
+                            broken_items.append((name, "No filename available"))
+        
+        # Display results
+        if broken_items:
+            print(f"Found {len(broken_items)} broken media item(s):")
+            print()
+            for name, filename in broken_items:
+                print(f"Name: {name}")
+                print(f"Filename: {filename}")
+                print()
+        else:
+            print("No broken media found.")
+            print()
+        
+    except Exception as e:
+        print(f"Error querying Plex: {str(e)}")
+        print()
+    
+    print('Press Enter to return to the main menu.')
+    input()
+
 def options():
     current_module = sys.modules[__name__]
     list = [
@@ -246,6 +348,7 @@ def options():
         option('Ignored Media', current_module, 'ignored'),
         option('Scraper', current_module, 'scrape'),
         option('Web Interface', current_module, 'web_interface'),
+        option('List broken media', current_module, 'list_broken_media'),
     ]
     ui_cls('Options/',update=update_available())
     for index, option_ in enumerate(list):
