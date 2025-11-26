@@ -238,12 +238,13 @@ def settings():
             load(doprint=True)
             back = True
 
-def list_broken_media():
-    ui_cls('Options/List Broken Media/')
+def repair_broken_media():
+    ui_cls('Options/Repair Broken Media/')
     import content.services.plex as plex
     import debrid.services.realdebrid as realdebrid
     import os
     import json
+    import time
     from types import SimpleNamespace
     
     if not plex.users:
@@ -340,6 +341,10 @@ def list_broken_media():
                 print(f"Error querying Real-Debrid: {str(e)}")
                 print()
         
+        # Track matched Real-Debrid IDs and hashes
+        # Structure: hash -> list of (id, name) tuples
+        matched_by_hash = {}  # hash -> [(id, name), ...]
+        
         # Display results with Real-Debrid matching
         if broken_items:
             print(f"Found {len(broken_items)} broken media item(s):")
@@ -350,6 +355,7 @@ def list_broken_media():
                 
                 # Try to match with Real-Debrid
                 rd_match = None
+                rd_hash = None
                 if filename != "No filename available" and rd_torrents:
                     # Extract basename from Plex filename
                     plex_basename = os.path.basename(filename) if filename else ""
@@ -365,10 +371,19 @@ def list_broken_media():
                                (rd_filename and rd_filename in filename) or \
                                (plex_basename and rd_filename and os.path.basename(rd_filename) == plex_basename):
                                 rd_match = getattr(torrent, 'id', None)
+                                rd_hash = getattr(torrent, 'hash', None)
                                 break
                 
                 if rd_match:
                     print(f"Real-Debrid ID: {rd_match}")
+                    if rd_hash:
+                        print(f"Real-Debrid Hash: {rd_hash}")
+                        # Track by hash - multiple items can share the same hash
+                        if rd_hash not in matched_by_hash:
+                            matched_by_hash[rd_hash] = []
+                        matched_by_hash[rd_hash].append((rd_match, name))
+                    else:
+                        print("Real-Debrid Hash: Not available")
                 else:
                     print("Real-Debrid match not found.")
                 print()
@@ -376,8 +391,100 @@ def list_broken_media():
             print("No broken media found.")
             print()
         
+        # Repair: Delete and re-add matched torrents (one hash at a time)
+        if matched_by_hash and realdebrid.api_key:
+            print()
+            print(f"Repairing {len(matched_by_hash)} unique hash(es)...")
+            print()
+            
+            added_count = 0
+            failed_count = 0
+            
+            for hash_value, items in matched_by_hash.items():
+                print(f"Processing hash: {hash_value}")
+                print(f"  Found {len(items)} matched item(s) with this hash")
+                
+                # Delete all existing Real-Debrid items with this hash
+                deleted_count = 0
+                for torrent_id, name in items:
+                    try:
+                        realdebrid.delete(f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}')
+                        deleted_count += 1
+                        print(f"  Deleted Real-Debrid torrent ID: {torrent_id} (Name: {name})")
+                        time.sleep(0.5)  # Rate limiting
+                    except Exception as e:
+                        print(f"  Error deleting torrent {torrent_id}: {str(e)}")
+                
+                print(f"  Deleted {deleted_count} torrent(s) with hash {hash_value}")
+                print()
+                
+                # Re-add the hash
+                try:
+                    # Create magnet link from hash
+                    magnet_link = f"magnet:?xt=urn:btih:{hash_value}"
+                    
+                    # Add magnet to Real-Debrid
+                    response = realdebrid.post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': magnet_link})
+                    
+                    if hasattr(response, 'error'):
+                        print(f"  Error adding hash {hash_value}: {response.error}")
+                        failed_count += 1
+                    elif hasattr(response, 'id'):
+                        torrent_id = str(response.id)
+                        # Use the first name from the items list for display
+                        _, name = items[0]
+                        print(f"  Re-added torrent (Hash: {hash_value}, Name: {name}) - New ID: {torrent_id}")
+                        
+                        # Wait for magnet conversion
+                        time.sleep(1.0)
+                        
+                        # Get torrent info to select files
+                        torrent_info = realdebrid.get(f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}')
+                        
+                        if torrent_info and hasattr(torrent_info, 'status') and torrent_info.status == 'magnet_error':
+                            print(f"  Error: Magnet conversion failed for hash {hash_value}")
+                            realdebrid.delete(f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}')
+                            failed_count += 1
+                        elif torrent_info and hasattr(torrent_info, 'files') and len(torrent_info.files) > 0:
+                            # Filter files by media extensions
+                            media_file_ids = []
+                            for file_ in torrent_info.files:
+                                file_path = getattr(file_, 'path', '')
+                                if file_path and file_path.endswith(tuple(realdebrid.media_file_extensions)):
+                                    file_id = getattr(file_, 'id', None)
+                                    if file_id is not None:
+                                        media_file_ids.append(str(file_id))
+                            
+                            if len(media_file_ids) > 0:
+                                # Select only media files
+                                select_response = realdebrid.post(
+                                    f'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{torrent_id}',
+                                    {'files': ",".join(media_file_ids)}
+                                )
+                                print(f"  Selected {len(media_file_ids)} media file(s)")
+                            else:
+                                print(f"  Warning: No media files found in torrent")
+                        else:
+                            print(f"  Warning: No files found in torrent or torrent info unavailable")
+                        
+                        added_count += 1
+                    else:
+                        print(f"  Unexpected response when adding hash {hash_value}")
+                        failed_count += 1
+                    
+                    time.sleep(1.0)  # Rate limiting
+                except Exception as e:
+                    print(f"  Error re-adding hash {hash_value}: {str(e)}")
+                    failed_count += 1
+                
+                print()  # Blank line between hash processing
+            
+            print()
+            print(f"Repair complete: {added_count} torrent(s) re-added, {failed_count} failed.")
+            print()
+        
     except Exception as e:
-        print(f"Error querying Plex: {str(e)}")
+        print(f"Error: {str(e)}")
         print()
     
     print('Press Enter to return to the main menu.')
@@ -391,7 +498,7 @@ def options():
         option('Ignored Media', current_module, 'ignored'),
         option('Scraper', current_module, 'scrape'),
         option('Web Interface', current_module, 'web_interface'),
-        option('List broken media', current_module, 'list_broken_media'),
+        option('Repair broken media', current_module, 'repair_broken_media'),
     ]
     ui_cls('Options/',update=update_available())
     for index, option_ in enumerate(list):
