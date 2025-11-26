@@ -241,6 +241,10 @@ def settings():
 def list_broken_media():
     ui_cls('Options/List Broken Media/')
     import content.services.plex as plex
+    import debrid.services.realdebrid as realdebrid
+    import os
+    import json
+    from types import SimpleNamespace
     
     if not plex.users:
         print("Error: No Plex users configured.")
@@ -321,13 +325,52 @@ def list_broken_media():
                         else:
                             broken_items.append((name, "No filename available"))
         
-        # Display results
+        # Fetch Real-Debrid torrents
+        print('Querying Real-Debrid for torrents...')
+        print()
+        rd_torrents = []
+        
+        if not realdebrid.api_key:
+            print("Warning: Real-Debrid API key not configured. Skipping Real-Debrid matching.")
+            print()
+        else:
+            try:
+                rd_torrents = realdebrid.cache.fetch_all_torrents()
+            except Exception as e:
+                print(f"Error querying Real-Debrid: {str(e)}")
+                print()
+        
+        # Display results with Real-Debrid matching
         if broken_items:
             print(f"Found {len(broken_items)} broken media item(s):")
             print()
             for name, filename in broken_items:
                 print(f"Name: {name}")
                 print(f"Filename: {filename}")
+                
+                # Try to match with Real-Debrid
+                rd_match = None
+                if filename != "No filename available" and rd_torrents:
+                    # Extract basename from Plex filename
+                    plex_basename = os.path.basename(filename) if filename else ""
+                    
+                    # Try to find a match
+                    for torrent in rd_torrents:
+                        rd_filename = getattr(torrent, 'filename', '')
+                        if rd_filename:
+                            # Check if Plex filename is in Real-Debrid filename or vice versa
+                            # Also check basename matches
+                            if (plex_basename and plex_basename in rd_filename) or \
+                               (filename and filename in rd_filename) or \
+                               (rd_filename and rd_filename in filename) or \
+                               (plex_basename and rd_filename and os.path.basename(rd_filename) == plex_basename):
+                                rd_match = getattr(torrent, 'id', None)
+                                break
+                
+                if rd_match:
+                    print(f"Real-Debrid ID: {rd_match}")
+                else:
+                    print("Real-Debrid match not found.")
                 print()
         else:
             print("No broken media found.")
