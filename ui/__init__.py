@@ -242,10 +242,7 @@ def repair_broken_media():
     ui_cls('Options/Repair Broken Media/')
     import content.services.plex as plex
     import debrid.services.realdebrid as realdebrid
-    import os
-    import json
     import time
-    from types import SimpleNamespace
     
     if not plex.users:
         print("Error: No Plex users configured.")
@@ -326,7 +323,7 @@ def repair_broken_media():
                         else:
                             broken_items.append((name, "No filename available"))
         
-        # Fetch Real-Debrid torrents
+        # Fetch Real-Debrid torrents and sync file cache
         print('Querying Real-Debrid for torrents...')
         print()
         rd_torrents = []
@@ -336,7 +333,24 @@ def repair_broken_media():
             print()
         else:
             try:
-                rd_torrents = realdebrid.cache.fetch_all_torrents()
+                # Sync torrents database first to ensure we have up-to-date torrent data
+                print('Syncing Real-Debrid torrents cache...')
+                print()
+                rd_torrents = realdebrid.cache.sync_torrents()
+                
+                if rd_torrents is None:
+                    print("Error: Failed to sync Real-Debrid torrents.")
+                    print()
+                else:
+                    print(f"Found {len(rd_torrents)} Real-Debrid torrent(s).")
+                    print()
+                    
+                    # Sync torrent files cache to ensure we have file data for matching
+                    # This uses the database torrent cache which is now up-to-date
+                    print('Syncing Real-Debrid torrent files cache...')
+                    print()
+                    realdebrid.cache.sync_torrent_files()
+                    print()
             except Exception as e:
                 print(f"Error querying Real-Debrid: {str(e)}")
                 print()
@@ -353,64 +367,21 @@ def repair_broken_media():
                 print(f"Name: {name}")
                 print(f"Filename: {filename}")
                 
-                # Try to match with Real-Debrid (initial match using torrent filename)
-                rd_match = None
-                rd_hash = None
-                if filename != "No filename available" and rd_torrents:
-                    # Extract basename from Plex filename
-                    plex_basename = os.path.basename(filename) if filename else ""
-                    
-                    # Try to find a match using torrent filename (fast, but may have false positives)
-                    for torrent in rd_torrents:
-                        rd_filename = getattr(torrent, 'filename', '')
-                        if rd_filename:
-                            # Check if Plex filename is in Real-Debrid filename or vice versa
-                            # Also check basename matches
-                            if (plex_basename and plex_basename in rd_filename) or \
-                               (filename and filename in rd_filename) or \
-                               (rd_filename and rd_filename in filename) or \
-                               (plex_basename and rd_filename and os.path.basename(rd_filename) == plex_basename):
-                                rd_match = getattr(torrent, 'id', None)
-                                rd_hash = getattr(torrent, 'hash', None)
-                                break
-                
-                # Verify match by checking actual files in torrent (more accurate)
-                verified_match = False
-                if rd_match and rd_hash and realdebrid.api_key:
-                    try:
-                        # Get detailed torrent info to verify against actual files
-                        torrent_info = realdebrid.get(f'https://api.real-debrid.com/rest/1.0/torrents/info/{rd_match}')
-                        
-                        if torrent_info and hasattr(torrent_info, 'files') and len(torrent_info.files) > 0:
-                            # Check if any file in the torrent matches the Plex filename
-                            for file_ in torrent_info.files:
-                                file_path = getattr(file_, 'path', '')
-                                if file_path:
-                                    # Extract basename from file path
-                                    file_basename = os.path.basename(file_path)
-                                    # Check if Plex filename matches any file in the torrent
-                                    if (plex_basename and plex_basename in file_path) or \
-                                       (filename and filename in file_path) or \
-                                       (file_basename == plex_basename) or \
-                                       (file_path.endswith(plex_basename)):
-                                        verified_match = True
-                                        break
-                    except Exception as e:
-                        print(f"  Warning: Could not verify match for ID {rd_match}: {str(e)}")
-                        # If verification fails, we'll skip this match to be safe
+                # Use cache.match_broken_media() for matching
+                rd_match, rd_hash, verified = realdebrid.cache.match_broken_media(filename, rd_torrents)
                 
                 if rd_match:
                     print(f"Real-Debrid ID: {rd_match}")
                     if rd_hash:
                         print(f"Real-Debrid Hash: {rd_hash}")
-                        if verified_match:
-                            print("  ✓ Verified: Match confirmed by checking torrent files")
+                        if verified:
+                            print("  ✓ Verified: Match confirmed by checking cached torrent files")
                             # Track by hash - multiple items can share the same hash
                             if rd_hash not in matched_by_hash:
                                 matched_by_hash[rd_hash] = []
                             matched_by_hash[rd_hash].append((rd_match, name, filename))
                         else:
-                            print("  ✗ Verification failed: Skipping (filename mismatch in torrent files)")
+                            print("  ✗ Verification failed: Skipping (filename mismatch in cached torrent files)")
                     else:
                         print("Real-Debrid Hash: Not available")
                 else:

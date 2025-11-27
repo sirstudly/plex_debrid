@@ -110,6 +110,20 @@ CREATE TABLE IF NOT EXISTS realdebrid_torrents (
     sync_marker TEXT
 );
 
+-- Real-Debrid torrent files cache table
+-- Note: Files are considered deleted when their parent torrent is deleted (no deleted_at needed)
+CREATE TABLE IF NOT EXISTS realdebrid_torrent_files (
+    torrent_id TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    path TEXT,
+    bytes INTEGER,
+    selected INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (torrent_id, file_id),
+    FOREIGN KEY (torrent_id) REFERENCES realdebrid_torrents(id)
+);
+
 -- ============================================================================
 -- VIEW CREATION
 -- ============================================================================
@@ -270,6 +284,10 @@ CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_hash ON realdebrid_torrents(h
 CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_status ON realdebrid_torrents(status);
 CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_updated_at ON realdebrid_torrents(updated_at);
 CREATE INDEX IF NOT EXISTS idx_realdebrid_torrents_deleted_at ON realdebrid_torrents(deleted_at);
+
+-- Indexes for realdebrid_torrent_files table
+CREATE INDEX IF NOT EXISTS idx_realdebrid_torrent_files_torrent_id ON realdebrid_torrent_files(torrent_id);
+CREATE INDEX IF NOT EXISTS idx_realdebrid_torrent_files_path ON realdebrid_torrent_files(path);
 
 -- ============================================================================
 -- USAGE EXAMPLES

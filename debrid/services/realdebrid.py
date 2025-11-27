@@ -16,9 +16,8 @@ media_file_extensions = [
 ]
 # (required) Authentification of the Debrid service, can be oauth aswell. Create a setting for the required variables in the ui.settings_list. For an oauth example check the trakt authentification.
 api_key = ""
-# Define Variables
 # Rate-limited session for API calls (250 req/min = ~0.24s between requests)
-rate_limited_session = custom_session(get_rate_limit=0.24, post_rate_limit=0.24)
+rate_limited_session = custom_session(get_rate_limit=1, post_rate_limit=1)
 errors = [
     [202," action already done"],
     [400," bad Request (see error message)"],
@@ -335,13 +334,15 @@ class cache:
         return all_torrents
 
     def mark_all_as_stale(self, sync_time):
-        """Mark all existing records as potentially stale"""
+        """Mark all existing records as potentially stale by clearing their sync_marker.
+        Records that get upserted will get the new sync_marker, records that don't will remain NULL.
+        """
         try:
             import store.sqlite_store as sqlite_store
             conn = sqlite_store._get_connection()
             cursor = conn.execute(
-                "UPDATE realdebrid_torrents SET sync_marker = ? WHERE deleted_at IS NULL",
-                (str(sync_time),)
+                "UPDATE realdebrid_torrents SET sync_marker = NULL WHERE deleted_at IS NULL",
+                ()
             )
             conn.commit()
             ui_print(f'[realdebrid_cache] marked {cursor.rowcount} records as stale', ui_settings.debug)
@@ -394,14 +395,17 @@ class cache:
             raise e
 
     def mark_deleted_records(self, sync_time):
-        """Mark records that weren't updated as deleted"""
+        """Mark records that weren't updated as deleted.
+        Records that were upserted have sync_marker = sync_time.
+        Records that weren't found in the API still have sync_marker = NULL.
+        """
         try:
             import store.sqlite_store as sqlite_store
             conn = sqlite_store._get_connection()
             cursor = conn.execute(
                 """UPDATE realdebrid_torrents 
                    SET deleted_at = datetime('now') 
-                   WHERE sync_marker != ? AND deleted_at IS NULL""",
+                   WHERE (sync_marker IS NULL OR sync_marker != ?) AND deleted_at IS NULL""",
                 (str(sync_time),)
             )
             conn.commit()
@@ -425,7 +429,11 @@ class cache:
             ui_print(f'[realdebrid_cache] error rolling back stale marking: {str(e)}', ui_settings.debug)
 
     def sync_torrents(self):
-        """Main sync method with error handling"""
+        """Main sync method with error handling
+        
+        Returns:
+            List of torrent objects if successful, None if failed
+        """
         sync_start_time = time.time()
 
         try:
@@ -440,7 +448,7 @@ class cache:
             if not torrents:
                 ui_print('[realdebrid_cache] no torrents fetched, aborting sync', ui_settings.debug)
                 self.rollback_stale_marking(sync_start_time)
-                return False
+                return None
 
             # Process torrents in batches for memory efficiency
             batch_size = 2000  # Optimal balance of performance and memory usage
@@ -453,13 +461,271 @@ class cache:
 
             self.last_refresh = time.time()
             ui_print(f'[realdebrid_cache] sync completed successfully in {time.time() - sync_start_time:.2f} seconds', ui_settings.debug)
-            return True
+            return torrents
 
         except Exception as e:
             ui_print(f'[realdebrid_cache] sync failed: {str(e)}', ui_settings.debug)
             # Rollback the "stale" marking
             self.rollback_stale_marking(sync_start_time)
+            return None
+
+    def fetch_torrent_files(self, torrent_id):
+        """Fetch file information from Real-Debrid API for a specific torrent"""
+        if not api_key:
+            ui_print('[realdebrid_cache] error: Real-Debrid API key not configured', ui_settings.debug)
+            return []
+        
+        try:
+            url = f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}'
+            response = get(url)
+            
+            if not response or not hasattr(response, 'files'):
+                ui_print(f'[realdebrid_cache] error: No files found for torrent {torrent_id}', ui_settings.debug)
+                return []
+            
+            files = []
+            for file_ in response.files:
+                file_data = {
+                    'id': getattr(file_, 'id', None),
+                    'path': getattr(file_, 'path', ''),
+                    'bytes': getattr(file_, 'bytes', 0),
+                    'selected': 1 if getattr(file_, 'selected', 0) == 1 else 0
+                }
+                files.append(file_data)
+            
+            return files
+        except Exception as e:
+            ui_print(f'[realdebrid_cache] error fetching files for torrent {torrent_id}: {str(e)}', ui_settings.debug)
+            return []
+
+    def upsert_torrent_files_batch(self, torrent_id, files_data, sync_time):
+        """Upsert a batch of torrent files into the database.
+        
+        Note: sync_time parameter kept for compatibility but not used since we removed sync_marker.
+        Files are deleted when their parent torrent is deleted.
+        """
+        try:
+            import store.sqlite_store as sqlite_store
+            conn = sqlite_store._get_connection()
+            
+            # Insert/update the files that exist
+            # Files are automatically considered deleted when their parent torrent is deleted
+            for file_data in files_data:
+                conn.execute(
+                    """
+                    INSERT INTO realdebrid_torrent_files (
+                        torrent_id, file_id, path, bytes, selected
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(torrent_id, file_id) DO UPDATE SET
+                        path=excluded.path,
+                        bytes=excluded.bytes,
+                        selected=excluded.selected,
+                        updated_at=datetime('now')
+                    """,
+                    (
+                        torrent_id,
+                        file_data.get('id'),
+                        file_data.get('path'),
+                        file_data.get('bytes'),
+                        file_data.get('selected', 0)
+                    )
+                )
+            
+            conn.commit()
+            ui_print(f'[realdebrid_cache] upserted {len(files_data)} files for torrent {torrent_id}', ui_settings.debug)
+            
+        except Exception as e:
+            ui_print(f'[realdebrid_cache] error upserting files for torrent {torrent_id}: {str(e)}', ui_settings.debug)
+            raise e
+
+
+    def sync_torrent_files(self):
+        """Main sync method for torrent files - fetches files for all active torrents"""
+        sync_start_time = time.time()
+        
+        try:
+            ui_print('[realdebrid_cache] starting torrent files sync...', ui_settings.debug)
+            
+            # Get all active torrents with 'downloaded' status from database
+            # Only 'downloaded' torrents have files available - others may be in conversion/queued states
+            import store.sqlite_store as sqlite_store
+            conn = sqlite_store._get_connection()
+            cursor = conn.execute(
+                "SELECT id FROM realdebrid_torrents WHERE deleted_at IS NULL AND status = 'downloaded'"
+            )
+            active_torrents = cursor.fetchall()
+            
+            if not active_torrents:
+                ui_print('[realdebrid_cache] no active torrents found, skipping file sync', ui_settings.debug)
+                return True
+            
+            ui_print(f'[realdebrid_cache] syncing files for {len(active_torrents)} torrent(s)...', ui_settings.debug)
+            
+            # Fetch and upsert files for each torrent
+            synced_count = 0
+            skipped_count = 0
+            failed_count = 0
+            
+            for (torrent_id,) in active_torrents:
+                try:
+                    # Check if we already have cached files for this torrent
+                    # Note: We don't check deleted_at on files since we rely on parent torrent's deleted_at
+                    cursor = conn.execute(
+                        "SELECT COUNT(*) FROM realdebrid_torrent_files WHERE torrent_id = ?",
+                        (torrent_id,)
+                    )
+                    has_cached_files = cursor.fetchone()[0] > 0
+                    
+                    if has_cached_files:
+                        # Files already cached, skip API call
+                        skipped_count += 1
+                        ui_print(f'[realdebrid_cache] using cached files for torrent {torrent_id}', ui_settings.debug)
+                    else:
+                        # No cached files, fetch from API
+                        files_data = self.fetch_torrent_files(torrent_id)
+                        if files_data:
+                            self.upsert_torrent_files_batch(torrent_id, files_data, sync_start_time)
+                            synced_count += 1
+                        else:
+                            # No files found - might be in magnet conversion or error state
+                            ui_print(f'[realdebrid_cache] no files found for torrent {torrent_id}', ui_settings.debug)
+                        time.sleep(0.5)  # Rate limiting between torrents
+                except Exception as e:
+                    ui_print(f'[realdebrid_cache] error syncing files for torrent {torrent_id}: {str(e)}', ui_settings.debug)
+                    failed_count += 1
+            
+            # Files are automatically considered deleted when their parent torrent is deleted
+            # No need to mark them separately - queries JOIN with parent to check deletion status
+            
+            ui_print(f'[realdebrid_cache] file sync completed: {synced_count} fetched, {skipped_count} cached, {failed_count} failed in {time.time() - sync_start_time:.2f} seconds', ui_settings.debug)
+            return True
+            
+        except Exception as e:
+            ui_print(f'[realdebrid_cache] file sync failed: {str(e)}', ui_settings.debug)
+            # No rollback needed since we don't use sync_marker for files anymore
             return False
+
+    def get_torrent_files_by_hash(self, hash_value):
+        """Query cached files for a given torrent hash. Returns list of file paths.
+        
+        Files are automatically filtered by parent torrent's deletion status via JOIN.
+        """
+        try:
+            import store.sqlite_store as sqlite_store
+            conn = sqlite_store._get_connection()
+            cursor = conn.execute(
+                """SELECT rtf.path 
+                   FROM realdebrid_torrent_files rtf
+                   JOIN realdebrid_torrents rt ON rtf.torrent_id = rt.id
+                   WHERE rt.hash = ? AND rt.deleted_at IS NULL
+                   ORDER BY rtf.path""",
+                (hash_value,)
+            )
+            results = cursor.fetchall()
+            return [row[0] for row in results if row[0]]
+        except Exception as e:
+            ui_print(f'[realdebrid_cache] error getting files for hash {hash_value}: {str(e)}', ui_settings.debug)
+            return []
+
+    def match_broken_media(self, plex_filename, rd_torrents):
+        """Match broken Plex media against Real-Debrid torrents using cached file data.
+        
+        This method queries the database directly for file paths that match the Plex filename,
+        avoiding unreliable torrent filename matching. It finds all potential matches and
+        returns the best one.
+        
+        Args:
+            plex_filename: The filename from Plex (full path)
+            rd_torrents: List of Real-Debrid torrent objects from fetch_all_torrents() (unused, kept for compatibility)
+        
+        Returns:
+            Tuple of (torrent_id, hash, verified) or (None, None, False) if no match
+        """
+        import os
+        
+        if not plex_filename or plex_filename == "No filename available":
+            return (None, None, False)
+        
+        # Extract basename from Plex filename
+        plex_basename = os.path.basename(plex_filename) if plex_filename else ""
+        
+        try:
+            import store.sqlite_store as sqlite_store
+            conn = sqlite_store._get_connection()
+            
+            # Query database directly for file paths that match the Plex filename
+            # This is more accurate than matching against generic torrent filenames
+            # We use multiple matching strategies to catch different path formats
+            
+            # Strategy 1: Exact basename match (most specific)
+            # Files are automatically filtered by parent torrent's deletion status via JOIN
+            cursor = conn.execute(
+                """SELECT DISTINCT rt.id, rt.hash
+                   FROM realdebrid_torrent_files rtf
+                   JOIN realdebrid_torrents rt ON rtf.torrent_id = rt.id
+                   WHERE rt.deleted_at IS NULL
+                   AND (
+                       rtf.path LIKE ? OR
+                       rtf.path LIKE ? OR
+                       rtf.path = ? OR
+                       ? LIKE '%' || rtf.path || '%' OR
+                       rtf.path LIKE '%' || ? || '%'
+                   )
+                   ORDER BY 
+                       CASE 
+                           WHEN rtf.path = ? THEN 1
+                           WHEN rtf.path LIKE ? THEN 2
+                           WHEN rtf.path LIKE ? THEN 3
+                           ELSE 4
+                       END
+                   LIMIT 1""",
+                (
+                    f'%/{plex_basename}',  # Path ends with basename
+                    f'%{plex_basename}%',  # Path contains basename
+                    plex_filename,  # Exact match
+                    plex_filename,  # Plex filename contains file path
+                    plex_basename,  # File path contains basename
+                    plex_filename,  # Priority: exact match
+                    f'%/{plex_basename}',  # Priority: ends with basename
+                    f'%{plex_basename}%',  # Priority: contains basename
+                )
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                torrent_id, hash_value = result
+                # Match is verified since we found it in the file paths
+                return (torrent_id, hash_value, True)
+            
+            # Strategy 2: If no match found, try matching just the basename more loosely
+            # This handles cases where paths might be structured differently
+            cursor = conn.execute(
+                """SELECT DISTINCT rt.id, rt.hash
+                   FROM realdebrid_torrent_files rtf
+                   JOIN realdebrid_torrents rt ON rtf.torrent_id = rt.id
+                   WHERE rt.deleted_at IS NULL
+                   AND (
+                       LOWER(rtf.path) LIKE LOWER(?) OR
+                       LOWER(rtf.path) LIKE LOWER(?)
+                   )
+                   LIMIT 1""",
+                (
+                    f'%{plex_basename}%',  # Case-insensitive contains
+                    f'%/{plex_basename}',  # Case-insensitive ends with
+                )
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                torrent_id, hash_value = result
+                return (torrent_id, hash_value, True)
+            
+            # No match found
+            return (None, None, False)
+            
+        except Exception as e:
+            ui_print(f'[realdebrid_cache] error matching broken media: {str(e)}', ui_settings.debug)
+            return (None, None, False)
 
 # Create global cache instance
 cache = cache()
