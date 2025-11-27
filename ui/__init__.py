@@ -342,8 +342,8 @@ def repair_broken_media():
                 print()
         
         # Track matched Real-Debrid IDs and hashes
-        # Structure: hash -> list of (id, name) tuples
-        matched_by_hash = {}  # hash -> [(id, name), ...]
+        # Structure: hash -> list of (id, name, filename) tuples
+        matched_by_hash = {}  # hash -> [(id, name, filename), ...]
         
         # Display results with Real-Debrid matching
         if broken_items:
@@ -353,14 +353,14 @@ def repair_broken_media():
                 print(f"Name: {name}")
                 print(f"Filename: {filename}")
                 
-                # Try to match with Real-Debrid
+                # Try to match with Real-Debrid (initial match using torrent filename)
                 rd_match = None
                 rd_hash = None
                 if filename != "No filename available" and rd_torrents:
                     # Extract basename from Plex filename
                     plex_basename = os.path.basename(filename) if filename else ""
                     
-                    # Try to find a match
+                    # Try to find a match using torrent filename (fast, but may have false positives)
                     for torrent in rd_torrents:
                         rd_filename = getattr(torrent, 'filename', '')
                         if rd_filename:
@@ -374,14 +374,43 @@ def repair_broken_media():
                                 rd_hash = getattr(torrent, 'hash', None)
                                 break
                 
+                # Verify match by checking actual files in torrent (more accurate)
+                verified_match = False
+                if rd_match and rd_hash and realdebrid.api_key:
+                    try:
+                        # Get detailed torrent info to verify against actual files
+                        torrent_info = realdebrid.get(f'https://api.real-debrid.com/rest/1.0/torrents/info/{rd_match}')
+                        
+                        if torrent_info and hasattr(torrent_info, 'files') and len(torrent_info.files) > 0:
+                            # Check if any file in the torrent matches the Plex filename
+                            for file_ in torrent_info.files:
+                                file_path = getattr(file_, 'path', '')
+                                if file_path:
+                                    # Extract basename from file path
+                                    file_basename = os.path.basename(file_path)
+                                    # Check if Plex filename matches any file in the torrent
+                                    if (plex_basename and plex_basename in file_path) or \
+                                       (filename and filename in file_path) or \
+                                       (file_basename == plex_basename) or \
+                                       (file_path.endswith(plex_basename)):
+                                        verified_match = True
+                                        break
+                    except Exception as e:
+                        print(f"  Warning: Could not verify match for ID {rd_match}: {str(e)}")
+                        # If verification fails, we'll skip this match to be safe
+                
                 if rd_match:
                     print(f"Real-Debrid ID: {rd_match}")
                     if rd_hash:
                         print(f"Real-Debrid Hash: {rd_hash}")
-                        # Track by hash - multiple items can share the same hash
-                        if rd_hash not in matched_by_hash:
-                            matched_by_hash[rd_hash] = []
-                        matched_by_hash[rd_hash].append((rd_match, name))
+                        if verified_match:
+                            print("  ✓ Verified: Match confirmed by checking torrent files")
+                            # Track by hash - multiple items can share the same hash
+                            if rd_hash not in matched_by_hash:
+                                matched_by_hash[rd_hash] = []
+                            matched_by_hash[rd_hash].append((rd_match, name, filename))
+                        else:
+                            print("  ✗ Verification failed: Skipping (filename mismatch in torrent files)")
                     else:
                         print("Real-Debrid Hash: Not available")
                 else:
@@ -405,17 +434,30 @@ def repair_broken_media():
                 print(f"  Found {len(items)} matched item(s) with this hash")
                 
                 # Delete all existing Real-Debrid items with this hash
+                # Deduplicate torrent IDs since multiple items may point to the same torrent
+                unique_torrent_ids = {}
+                for item in items:
+                    torrent_id, name, filename = item
+                    if torrent_id not in unique_torrent_ids:
+                        unique_torrent_ids[torrent_id] = name  # Store first name for display
+                
                 deleted_count = 0
-                for torrent_id, name in items:
+                for torrent_id, name in unique_torrent_ids.items():
                     try:
                         realdebrid.delete(f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}')
                         deleted_count += 1
                         print(f"  Deleted Real-Debrid torrent ID: {torrent_id} (Name: {name})")
-                        time.sleep(0.5)  # Rate limiting
+                        time.sleep(1.0)  # Rate limiting (DELETE not rate-limited by session, so manual delay)
                     except Exception as e:
-                        print(f"  Error deleting torrent {torrent_id}: {str(e)}")
+                        # Check if error is because torrent was already deleted
+                        error_msg = str(e)
+                        if '404' in error_msg or 'unknown_ressource' in error_msg or 'invalid id' in error_msg.lower():
+                            print(f"  Torrent ID {torrent_id} already deleted (skipping)")
+                            deleted_count += 1  # Count as success since it's already gone
+                        else:
+                            print(f"  Error deleting torrent {torrent_id}: {str(e)}")
                 
-                print(f"  Deleted {deleted_count} torrent(s) with hash {hash_value}")
+                print(f"  Deleted {deleted_count} unique torrent(s) with hash {hash_value}")
                 print()
                 
                 # Re-add the hash
@@ -432,8 +474,8 @@ def repair_broken_media():
                     elif hasattr(response, 'id'):
                         torrent_id = str(response.id)
                         # Use the first name from the items list for display
-                        _, name = items[0]
-                        print(f"  Re-added torrent (Hash: {hash_value}, Name: {name}) - New ID: {torrent_id}")
+                        _, name, fname = items[0]
+                        print(f"  Re-added torrent (Hash: {hash_value}, Name: {name}, Filename: {fname}) - New ID: {torrent_id}")
                         
                         # Wait for magnet conversion
                         time.sleep(1.0)
