@@ -797,14 +797,15 @@ def threaded(stop):
                 if hasattr(element, 'download'):
                     newly_added = True
                     if element.type == "show":
-                        for season in element.Seasons:
-                            if season in content.classes.media.ignore_queue or not newly_added:
-                                newly_added = False
-                                break
-                            for episode in season.Episodes:
-                                if episode in content.classes.media.ignore_queue:
+                        if hasattr(element, "Seasons"):
+                            for season in element.Seasons:
+                                if season in content.classes.media.ignore_queue or not newly_added:
                                     newly_added = False
                                     break
+                                for episode in season.Episodes:
+                                    if episode in content.classes.media.ignore_queue:
+                                        newly_added = False
+                                        break
                     if newly_added:
                         element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
             ui_print('done')

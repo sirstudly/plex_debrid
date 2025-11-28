@@ -321,6 +321,8 @@ class episode(classes.media):
 class show(classes.media):
     def __init__(self, ratingKey):
         self.watchlist = watchlist
+        # Initialize Seasons to ensure it always exists
+        self.Seasons = []
         if not isinstance(ratingKey, str):
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
@@ -341,6 +343,7 @@ class show(classes.media):
         if not response == None and hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
             self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
             self.EID = setEID(self)
+            # Reset Seasons to empty list before populating
             self.Seasons = []
             url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '/children?includeUserState=1&X-Plex-Container-Size=200&X-Plex-Container-Start=0&X-Plex-Token=' + token
             response = get(session, url)
