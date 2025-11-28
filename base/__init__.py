@@ -83,7 +83,7 @@ class custom_session(requests.Session):
         elapsed_time = time.time() - self.last_request_time
         if method == 'GET' and elapsed_time < self.GET_RATE_LIMIT:
             time.sleep(self.GET_RATE_LIMIT - elapsed_time)
-        elif method == 'POST' and elapsed_time < self.POST_RATE_LIMIT:
+        elif method in ('POST', 'DELETE', 'PUT') and elapsed_time < self.POST_RATE_LIMIT:
             time.sleep(self.POST_RATE_LIMIT - elapsed_time)
 
         retries = 0
@@ -94,12 +94,11 @@ class custom_session(requests.Session):
                 self.last_request_time = time.time()
 
                 if response.status_code in self.RETRY_CODES:
-                    logger.error(f"request error: {response.status_code} - retrying... {url}")
                     retries += 1
-                    if method == 'GET':
-                        time.sleep(self.GET_RATE_LIMIT)
-                    elif method == 'POST':
-                        time.sleep(self.POST_RATE_LIMIT)
+                    max_rate_limit = max(self.GET_RATE_LIMIT, self.POST_RATE_LIMIT)
+                    backoff_time = (1 + 10 * retries) * max_rate_limit
+                    logger.error(f"request error: {response.status_code} - retrying in {backoff_time} seconds... {url}")
+                    time.sleep(backoff_time)
                     continue
 
                 return response
@@ -109,7 +108,7 @@ class custom_session(requests.Session):
                 retries += 1
                 if method == 'GET':
                     time.sleep(self.GET_RATE_LIMIT)
-                elif method == 'POST':
+                elif method in ('POST', 'DELETE', 'PUT'):
                     time.sleep(self.POST_RATE_LIMIT)
 
         logger.error(f"failed to fetch URL {url} after {self.MAX_RETRIES} attempts")
