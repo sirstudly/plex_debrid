@@ -579,7 +579,6 @@ class cache:
                     if has_cached_files:
                         # Files already cached, skip API call
                         skipped_count += 1
-                        ui_print(f'[realdebrid_cache] using cached files for torrent {torrent_id}', ui_settings.debug)
                     else:
                         # No cached files, fetch from API
                         files_data = self.fetch_torrent_files(torrent_id)
