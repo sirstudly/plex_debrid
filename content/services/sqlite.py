@@ -66,7 +66,7 @@ class library():
                     
                     # Check if we should remove the entire show from all watchlists
                     if plex_watchlist and library_obj:
-                        self._check_and_remove_show_if_all_episodes_ignored(self, plex_watchlist, library_obj, trakt_watchlist, overseerr_requests, sqlite_requests)
+                        library.ignore._check_and_remove_show_if_all_episodes_ignored(self, plex_watchlist, library_obj, trakt_watchlist, overseerr_requests, sqlite_requests)
                     
             except Exception as e:
                 ui_print("[sqlite] error: couldnt mark item as ignored: " + str(e), debug=ui_settings.debug)
@@ -166,7 +166,8 @@ class library():
             except Exception as e:
                 ui_print("[sqlite] error: couldnt sync from database: " + str(e), debug=ui_settings.debug)
 
-        def _check_and_remove_show_if_all_episodes_ignored(self, episode, plex_watchlist, library_obj, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
+        @staticmethod
+        def _check_and_remove_show_if_all_episodes_ignored(episode, plex_watchlist, library_obj, trakt_watchlist=None, overseerr_requests=None, sqlite_requests=None):
             """Check if all uncollected/released episodes of a show are ignored, and if so, remove the show from all watchlists."""
             try:
                 # Find the show that contains this episode
