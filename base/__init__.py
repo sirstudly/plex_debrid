@@ -96,7 +96,7 @@ class custom_session(requests.Session):
                 if response.status_code in self.RETRY_CODES:
                     retries += 1
                     max_rate_limit = max(self.GET_RATE_LIMIT, self.POST_RATE_LIMIT)
-                    backoff_time = (1 + 10 * retries) * max_rate_limit
+                    backoff_time = min((1 + 10 * retries) * max_rate_limit, 60)  # max backoff time is 60 seconds
                     logger.error(f"request error: {response.status_code} - retrying in {backoff_time} seconds... {url}")
                     time.sleep(backoff_time)
                     continue
