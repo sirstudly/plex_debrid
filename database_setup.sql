@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS media_movie (
     watched INTEGER,
     downloading INTEGER,
     ignored INTEGER,
+    blacklisted INTEGER DEFAULT 0,
     watchlisted_by TEXT,
     watchlisted_at TEXT,
     source TEXT,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS media_show (
     collected INTEGER,
     watched INTEGER,
     ignored INTEGER,
+    blacklisted INTEGER DEFAULT 0,
     watchlisted_by TEXT,
     watchlisted_at TEXT,
     source TEXT,
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS media_season (
     idx INTEGER,
     collected INTEGER,
     ignored INTEGER,
+    blacklisted INTEGER DEFAULT 0,
     watchlisted_by TEXT,
     source TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -74,6 +77,7 @@ CREATE TABLE IF NOT EXISTS media_episode (
     collected INTEGER,
     downloading INTEGER,
     ignored INTEGER,
+    blacklisted INTEGER DEFAULT 0,
     watchlisted_by TEXT,
     source TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -147,6 +151,7 @@ SELECT
     source,
     COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
+        WHEN blacklisted = 1 THEN 'blacklisted'
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
         WHEN downloading = 1 THEN 'downloading'
@@ -154,7 +159,8 @@ SELECT
     END as status,
     collected,
     ignored,
-    downloading
+    downloading,
+    blacklisted
 FROM media_movie
 
 UNION ALL
@@ -173,13 +179,15 @@ SELECT
     source,
     COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
+        WHEN blacklisted = 1 THEN 'blacklisted'
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
         ELSE 'pending'
     END as status,
     collected,
     ignored,
-    0 as downloading
+    0 as downloading,
+    blacklisted
 FROM media_show
 
 UNION ALL
@@ -202,13 +210,15 @@ SELECT
     source,
     COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
+        WHEN blacklisted = 1 THEN 'blacklisted'
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
         ELSE 'pending'
     END as status,
     collected,
     ignored,
-    0 as downloading
+    0 as downloading,
+    blacklisted
 FROM media_season
 
 UNION ALL
@@ -235,6 +245,7 @@ SELECT
     source,
     COALESCE(datetime(updated_at), datetime('1970-01-01')) as updated_at,
     CASE 
+        WHEN blacklisted = 1 THEN 'blacklisted'
         WHEN collected = 1 THEN 'collected'
         WHEN ignored = 1 THEN 'ignored'
         WHEN downloading = 1 THEN 'downloading'
@@ -242,7 +253,8 @@ SELECT
     END as status,
     collected,
     ignored,
-    downloading
+    downloading,
+    blacklisted
 FROM media_episode;
 
 -- ============================================================================
@@ -255,24 +267,28 @@ CREATE INDEX IF NOT EXISTS idx_media_movie_year ON media_movie(year);
 CREATE INDEX IF NOT EXISTS idx_media_movie_watchlisted_by ON media_movie(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_movie_watchlisted_at ON media_movie(watchlisted_at);
 CREATE INDEX IF NOT EXISTS idx_media_movie_source ON media_movie(source);
+CREATE INDEX IF NOT EXISTS idx_media_movie_blacklisted ON media_movie(blacklisted);
 
 CREATE INDEX IF NOT EXISTS idx_media_show_status ON media_show(collected, ignored);
 CREATE INDEX IF NOT EXISTS idx_media_show_year ON media_show(year);
 CREATE INDEX IF NOT EXISTS idx_media_show_watchlisted_by ON media_show(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_show_watchlisted_at ON media_show(watchlisted_at);
 CREATE INDEX IF NOT EXISTS idx_media_show_source ON media_show(source);
+CREATE INDEX IF NOT EXISTS idx_media_show_blacklisted ON media_show(blacklisted);
 
 CREATE INDEX IF NOT EXISTS idx_media_season_status ON media_season(collected, ignored);
 CREATE INDEX IF NOT EXISTS idx_media_season_year ON media_season(year);
 CREATE INDEX IF NOT EXISTS idx_media_season_watchlisted_by ON media_season(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_season_updated_at ON media_season(updated_at);
 CREATE INDEX IF NOT EXISTS idx_media_season_source ON media_season(source);
+CREATE INDEX IF NOT EXISTS idx_media_season_blacklisted ON media_season(blacklisted);
 
 CREATE INDEX IF NOT EXISTS idx_media_episode_status ON media_episode(collected, ignored, downloading);
 CREATE INDEX IF NOT EXISTS idx_media_episode_year ON media_episode(year);
 CREATE INDEX IF NOT EXISTS idx_media_episode_watchlisted_by ON media_episode(watchlisted_by);
 CREATE INDEX IF NOT EXISTS idx_media_episode_updated_at ON media_episode(updated_at);
 CREATE INDEX IF NOT EXISTS idx_media_episode_source ON media_episode(source);
+CREATE INDEX IF NOT EXISTS idx_media_episode_blacklisted ON media_episode(blacklisted);
 
 -- Indexes for media_release table
 CREATE INDEX IF NOT EXISTS idx_media_release_status ON media_release(status);

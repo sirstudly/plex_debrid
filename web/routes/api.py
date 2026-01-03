@@ -297,7 +297,11 @@ async def get_statistics() -> Dict[str, Any]:
                 SUM(CASE WHEN status = 'collected' AND media_type = 'movie' THEN 1 ELSE 0 END) as collected_movies,
                 SUM(CASE WHEN status = 'collected' AND media_type = 'show' THEN 1 ELSE 0 END) as collected_shows,
                 SUM(CASE WHEN status = 'collected' AND media_type = 'season' THEN 1 ELSE 0 END) as collected_seasons,
-                SUM(CASE WHEN status = 'collected' AND media_type = 'episode' THEN 1 ELSE 0 END) as collected_episodes
+                SUM(CASE WHEN status = 'collected' AND media_type = 'episode' THEN 1 ELSE 0 END) as collected_episodes,
+                SUM(CASE WHEN status = 'blacklisted' AND media_type = 'movie' THEN 1 ELSE 0 END) as blacklisted_movies,
+                SUM(CASE WHEN status = 'blacklisted' AND media_type = 'show' THEN 1 ELSE 0 END) as blacklisted_shows,
+                SUM(CASE WHEN status = 'blacklisted' AND media_type = 'season' THEN 1 ELSE 0 END) as blacklisted_seasons,
+                SUM(CASE WHEN status = 'blacklisted' AND media_type = 'episode' THEN 1 ELSE 0 END) as blacklisted_episodes
             FROM v_media
         """
         
@@ -338,6 +342,13 @@ async def get_statistics() -> Dict[str, Any]:
                     "episodes": row[13],
                     "total": row[10] + row[11] + row[12] + row[13]
                 },
+                "blacklisted": {
+                    "movies": row[14],
+                    "shows": row[15],
+                    "seasons": row[16],
+                    "episodes": row[17],
+                    "total": row[14] + row[15] + row[16] + row[17]
+                },
                 "local_requests": {
                     "total": local_requests_count
                 }
@@ -348,6 +359,7 @@ async def get_statistics() -> Dict[str, Any]:
                 "downloading": {"movies": 0, "episodes": 0, "total": 0},
                 "ignored": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
                 "collected": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
+                "blacklisted": {"movies": 0, "shows": 0, "seasons": 0, "episodes": 0, "total": 0},
                 "local_requests": {"total": local_requests_count}
             }
         
@@ -452,6 +464,61 @@ async def toggle_blacklist_status(guid: str = Query(..., description="Media item
             "hash": hash_value,
             "status": new_status,
             "message": f"Release {'blacklisted' if new_status == 'blacklisted' else 'unblacklisted'} successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
+
+@router.post("/media/blacklist")
+async def toggle_media_blacklist_status(
+    guid: str = Query(..., description="Media item GUID"), 
+    media_type: str = Query(..., description="Media type: movie, show, season, episode")
+) -> Dict[str, Any]:
+    """Toggle the blacklist status of a media item"""
+    conn = get_db_connection()
+    
+    # Validate media_type
+    valid_media_types = ['movie', 'show', 'season', 'episode']
+    if media_type not in valid_media_types:
+        raise HTTPException(status_code=400, detail=f"Invalid media_type. Must be one of: {', '.join(valid_media_types)}")
+    
+    # Map media_type to table name
+    table_map = {
+        'movie': 'media_movie',
+        'show': 'media_show',
+        'season': 'media_season',
+        'episode': 'media_episode'
+    }
+    table_name = table_map[media_type]
+    
+    try:
+        # First, get the current blacklisted status
+        cursor = conn.execute(
+            f"SELECT blacklisted FROM {table_name} WHERE guid = ?",
+            (guid,)
+        )
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail=f"{media_type.capitalize()} not found")
+        
+        current_blacklisted = row[0] if row[0] is not None else 0
+        new_blacklisted = 0 if current_blacklisted == 1 else 1
+        
+        # Update the blacklisted status
+        conn.execute(
+            f"UPDATE {table_name} SET blacklisted = ?, updated_at = datetime('now') WHERE guid = ?",
+            (new_blacklisted, guid)
+        )
+        conn.commit()
+        
+        return {
+            "guid": guid,
+            "media_type": media_type,
+            "blacklisted": bool(new_blacklisted),
+            "message": f"{media_type.capitalize()} {'blacklisted' if new_blacklisted == 1 else 'unblacklisted'} successfully"
         }
         
     except HTTPException:

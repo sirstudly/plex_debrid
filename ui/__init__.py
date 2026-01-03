@@ -760,6 +760,10 @@ def threaded(stop):
         t0 = time.time()
         for element in unique(watchlists):
             if hasattr(element, 'download'):
+                # Skip if media item is blacklisted
+                if sqlite_store.is_media_blacklisted(element):
+                    ui_print(f"skipping blacklisted item: {element.query()}", ui_settings.debug)
+                    continue
                 element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                 t1 = time.time()
                 #if more than 5 seconds have passed, check for newly watchlisted content
@@ -780,6 +784,10 @@ def threaded(stop):
                         ui_print('checking new content ...')
                         for element in new_watchlists:
                             if hasattr(element, 'download'):
+                                # Skip if media item is blacklisted
+                                if sqlite_store.is_media_blacklisted(element):
+                                    ui_print(f"skipping blacklisted item: {element.query()}", ui_settings.debug)
+                                    continue
                                 element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                         ui_print('done')
                     t0 = time.time()
@@ -795,14 +803,29 @@ def threaded(stop):
             ui_print('checking new content ...')
             for element in unique(watchlists):
                 if hasattr(element, 'download'):
+                    # Skip if media item is blacklisted
+                    if sqlite_store.is_media_blacklisted(element):
+                        ui_print(f"skipping blacklisted item: {element.query()}", ui_settings.debug)
+                        continue
+                    
                     newly_added = True
                     if element.type == "show":
                         if hasattr(element, "Seasons"):
                             for season in element.Seasons:
+                                # Skip if season is blacklisted
+                                if sqlite_store.is_media_blacklisted(season):
+                                    ui_print(f"skipping blacklisted season: {season.query()}", ui_settings.debug)
+                                    newly_added = False
+                                    break
                                 if season in content.classes.media.ignore_queue or not newly_added:
                                     newly_added = False
                                     break
                                 for episode in season.Episodes:
+                                    # Skip if episode is blacklisted
+                                    if sqlite_store.is_media_blacklisted(episode):
+                                        ui_print(f"skipping blacklisted episode: {episode.query()}", ui_settings.debug)
+                                        newly_added = False
+                                        break
                                     if episode in content.classes.media.ignore_queue:
                                         newly_added = False
                                         break
@@ -873,6 +896,10 @@ def threaded(stop):
             t0 = time.time()
             for element in unique(watchlists):
                 if hasattr(element, 'download'):
+                    # Skip if media item is blacklisted
+                    if sqlite_store.is_media_blacklisted(element):
+                        ui_print(f"skipping blacklisted item: {element.query()}", ui_settings.debug)
+                        continue
                     element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                     t1 = time.time()
                     #if more than 5 seconds have passed, check for newly watchlisted content
@@ -893,6 +920,10 @@ def threaded(stop):
                             ui_print('checking new content ...')
                             for element in new_watchlists:
                                 if hasattr(element, 'download'):
+                                    # Skip if media item is blacklisted
+                                    if sqlite_store.is_media_blacklisted(element):
+                                        ui_print(f"skipping blacklisted item: {element.query()}", ui_settings.debug)
+                                        continue
                                     element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
                             ui_print('done')
                         t0 = time.time()

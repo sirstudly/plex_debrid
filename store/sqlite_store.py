@@ -218,6 +218,52 @@ def is_release_at_status(media_obj, release, statuses) -> bool:
         return False
 
 
+def is_media_blacklisted(media_obj) -> bool:
+    """Check if a media item (movie, show, season, or episode) is blacklisted in the database.
+    
+    Args:
+        media_obj: The media object to check (movie, show, season, or episode).
+        
+    Returns:
+        True if the media item is blacklisted, False otherwise.
+    """
+    try:
+        conn = _get_connection()
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return False
+        
+        media_type = getattr(media_obj, 'type', None)
+        if media_type is None:
+            return False
+        
+        # Map media type to table name
+        table_map = {
+            'movie': 'media_movie',
+            'show': 'media_show',
+            'season': 'media_season',
+            'episode': 'media_episode'
+        }
+        
+        table_name = table_map.get(media_type)
+        if table_name is None:
+            return False
+        
+        # Query the database for blacklisted status
+        cursor = conn.execute(
+            f"SELECT blacklisted FROM {table_name} WHERE guid = ?",
+            (key_guid,)
+        )
+        result = cursor.fetchone()
+        
+        # Return True if blacklisted = 1
+        return result is not None and result[0] == 1
+        
+    except Exception as e:
+        print("[sqlite] error: couldnt check blacklisted status: " + str(e))
+        return False
+
+
 def update_db(media_obj, library_list, source=None) -> None:
     """Upsert current media status for movies, shows, seasons, and episodes.
 

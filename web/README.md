@@ -165,6 +165,23 @@ Toggle the blacklist status of a specific release.
 }
 ```
 
+#### POST `/api/media/blacklist`
+Toggle the blacklist status of a media item (movie, show, season, or episode).
+
+**Parameters**:
+- `guid` (required): Media item GUID
+- `media_type` (required): Media type (`movie`, `show`, `season`, `episode`)
+
+**Response**:
+```json
+{
+  "guid": "plex://movie/123",
+  "media_type": "movie",
+  "blacklisted": true,
+  "message": "Movie blacklisted successfully"
+}
+```
+
 #### GET `/api/stats`
 Get summary statistics.
 
@@ -196,6 +213,13 @@ Get summary statistics.
     "seasons": 100,
     "episodes": 2500,
     "total": 3800
+  },
+  "blacklisted": {
+    "movies": 5,
+    "shows": 2,
+    "seasons": 3,
+    "episodes": 10,
+    "total": 20
   }
 }
 ```
@@ -219,6 +243,7 @@ Health check endpoint.
 - **Media Type**: Filter by movies, shows, seasons, or episodes
 - **Source**: Filter by media source (Plex, Trakt, Overseerr)
 - **Year**: Filter by release year
+- **Status**: Filter by status (Pending, Downloading, Ignored, Collected, Blacklisted)
 - **Search**: Real-time search across titles
 - **Sorting**: Sort by watchlisted date, title, year, or updated date
 - **Page Size**: Choose how many items to display per page
@@ -228,6 +253,14 @@ Health check endpoint.
 - Includes all visible columns and data
 - Automatic filename with date stamp
 - Respects current filters and sorting
+
+### Media Item Blacklist
+- **Blacklist entire media items** (movies, shows, seasons, episodes) from the main dashboard
+- **Actions column** in the table provides a blacklist button for each item
+- **Toggle blacklist status** with a single click
+- **Blacklisted items** take priority over all other statuses (blacklisted > collected > ignored > downloading > pending)
+- **Visual indicators**: Blacklisted items show with a red "Blacklisted" button and danger-colored status badge
+- **Filter by blacklisted**: Use the status filter dropdown to view only blacklisted items
 
 ### Releases Management
 - **Click on any media item** to view its associated releases
