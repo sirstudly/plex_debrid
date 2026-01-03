@@ -414,6 +414,54 @@ class cache:
             ui_print(f'[realdebrid_cache] error marking deleted records: {str(e)}', ui_settings.debug)
             raise e
 
+    def cleanup_old_deleted_records(self, days_old=30):
+        """Permanently delete records that have been marked as deleted for more than specified days.
+        
+        Args:
+            days_old: Number of days after which deleted records should be purged (default: 30)
+        
+        Returns:
+            Tuple of (torrents_deleted, files_deleted) counts
+        """
+        try:
+            import store.sqlite_store as sqlite_store
+            conn = sqlite_store._get_connection()
+            
+            # SQLite datetime modifier format: '-30 days'
+            datetime_modifier = f'-{days_old} days'
+            
+            # First, delete orphaned files for torrents that will be deleted
+            # Delete files where parent torrent has been deleted for more than days_old
+            cursor = conn.execute(
+                f"""DELETE FROM realdebrid_torrent_files
+                   WHERE torrent_id IN (
+                       SELECT id FROM realdebrid_torrents
+                       WHERE deleted_at IS NOT NULL
+                       AND deleted_at < datetime('now', '{datetime_modifier}')
+                   )"""
+            )
+            files_deleted = cursor.rowcount
+            
+            # Then delete the torrents themselves
+            cursor = conn.execute(
+                f"""DELETE FROM realdebrid_torrents
+                   WHERE deleted_at IS NOT NULL
+                   AND deleted_at < datetime('now', '{datetime_modifier}')"""
+            )
+            torrents_deleted = cursor.rowcount
+            
+            conn.commit()
+            
+            if torrents_deleted > 0 or files_deleted > 0:
+                ui_print(f'[realdebrid_cache] cleaned up {torrents_deleted} torrent(s) and {files_deleted} file(s) older than {days_old} days', ui_settings.debug)
+            
+            return (torrents_deleted, files_deleted)
+            
+        except Exception as e:
+            ui_print(f'[realdebrid_cache] error cleaning up old deleted records: {str(e)}', ui_settings.debug)
+            # Don't raise - cleanup failure shouldn't break sync
+            return (0, 0)
+
     def rollback_stale_marking(self, sync_time):
         """Rollback the stale marking in case of error"""
         try:
@@ -458,6 +506,9 @@ class cache:
 
             # Mark truly deleted records
             self.mark_deleted_records(sync_start_time)
+
+            # Clean up old deleted records (older than 30 days)
+            self.cleanup_old_deleted_records(days_old=30)
 
             self.last_refresh = time.time()
             ui_print(f'[realdebrid_cache] sync completed successfully in {time.time() - sync_start_time:.2f} seconds', ui_settings.debug)
