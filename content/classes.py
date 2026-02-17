@@ -1062,8 +1062,14 @@ class media:
     def released(self):
         try:
             if not hasattr(self, "originallyAvailableAt"):
+                if self.type == 'show':
+                    # Continuing shows may lack date from Plex; allow download block to run (episodes gated by episode.released()/available())
+                    return True
                 return False  # attribute may not be present
-
+            if self.originallyAvailableAt is None or (isinstance(self.originallyAvailableAt, str) and not self.originallyAvailableAt.strip()):
+                if self.type == 'show':
+                    return True
+                return False
             released = datetime.datetime.utcnow(
             ) - datetime.datetime.strptime(self.originallyAvailableAt, '%Y-%m-%d')
             if hasattr(self, "offset_airtime"):
@@ -1417,7 +1423,10 @@ class media:
             if self.collected(library) and self.hasended():
                 ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from watchlists.")
                 self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
-            if len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched():
+            do_download = len(self.versions()) > 0 and self.released() and (not self.collected(library) or self.version_missing()) and not self.watched()
+            if not do_download and not self.collected(library) and len(self.versions()) > 0:
+                ui_print(f"[show skip] '{self.title}': versions={len(self.versions())} released={self.released()} watched={self.watched()} (not running download)", debug=ui_settings.debug)
+            if do_download:
                 self.isanime()
                 self.Seasons = self.uncollected(library)
                 if len(self.Seasons) == 0 and self.hasended():

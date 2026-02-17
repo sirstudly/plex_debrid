@@ -845,12 +845,20 @@ def threaded(stop):
             overseerr_requests = content.services.overseerr.requests()
             # get local sqlite requests
             sqlite_requests = content.services.sqlite.watchlist()
-            # combine all content, sort by newest
+            # combine all content; sort so continuing shows are checked first, then by newest
+            # (full run processes every item in one go - with a large watchlist the run can take hours or days,
+            # so the "loop interval" is effectively: previous run duration + loop_interval_seconds)
             watchlists = plex_watchlist + trakt_watchlist + overseerr_requests + sqlite_requests
             try:
-                watchlists.data.sort(key=lambda s: s.watchlistedAt,reverse=True)
-            except:
-                ui_print("couldnt sort monitored media by newest, using default order.", ui_settings.debug)
+                def _full_run_sort_key(s):
+                    continuing = getattr(s, 'type', None) == 'show' and not getattr(s, 'hasended', lambda: True)()
+                    return (0 if continuing else 1, -(getattr(s, 'watchlistedAt', 0) or 0))
+                watchlists.data.sort(key=_full_run_sort_key)
+            except Exception:
+                try:
+                    watchlists.data.sort(key=lambda s: s.watchlistedAt, reverse=True)
+                except Exception:
+                    ui_print("couldnt sort monitored media, using default order.", ui_settings.debug)
             library = content.classes.library()[0]()
             timeout_counter = 0
             
