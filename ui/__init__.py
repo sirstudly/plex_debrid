@@ -727,6 +727,59 @@ def unique(lst):
             unique_objects.append(obj)
     return unique_objects
 
+def cleanup_watchlist_items(plex_watchlist, library):
+    """Remove films (released in digital/physical) and ended shows from Plex watchlist after threshold days."""
+    try:
+        threshold = int(getattr(ui_settings, 'watchlist_cleanup_days', 30))
+    except (TypeError, ValueError):
+        threshold = 30
+    if threshold <= 0:
+        return
+    now = datetime.datetime.utcnow()
+    plex_service = content.services.plex.watchlist
+    items_to_remove = []
+    for item in list(plex_watchlist.data):
+        if not hasattr(item, 'watchlist') or item.watchlist != plex_service:
+            continue
+        if not hasattr(item, 'type') or item.type not in ('movie', 'show'):
+            continue
+        watchlisted_at = getattr(item, 'watchlistedAt', None) or getattr(item, 'addedAt', 0)
+        if watchlisted_at is None:
+            continue
+        try:
+            if isinstance(watchlisted_at, (int, float)):
+                added_dt = datetime.datetime.utcfromtimestamp(float(watchlisted_at))
+            elif isinstance(watchlisted_at, str):
+                added_dt = datetime.datetime.strptime(watchlisted_at[:10], '%Y-%m-%d')
+            else:
+                continue
+        except (ValueError, OSError):
+            continue
+        days_in_watchlist = (now - added_dt).days
+        if days_in_watchlist < threshold:
+            continue
+        if item.type == 'movie':
+            try:
+                if hasattr(content.services, 'trakt') and len(getattr(content.services.trakt, 'users', [])) > 0:
+                    content.services.trakt.current_user = content.services.trakt.users[0]
+                    item.match('content.services.trakt')
+                if item.available():
+                    items_to_remove.append(item)
+            except Exception:
+                continue
+        elif item.type == 'show':
+            try:
+                if item.hasended():
+                    items_to_remove.append(item)
+            except Exception:
+                continue
+    for item in items_to_remove:
+        try:
+            plex_watchlist.remove(item)
+            ui_print(f'[plex cleanup] removed "{item.title}" ({item.year}) from watchlist (released, >{threshold}d in list)')
+        except Exception as e:
+            ui_print(f'[plex cleanup] error removing {item.query()}: {e}', debug=ui_settings.debug)
+
 def threaded(stop):
     ui_cls()
     if service_mode == True:
@@ -861,6 +914,9 @@ def threaded(stop):
                     ui_print("couldnt sort monitored media, using default order.", ui_settings.debug)
             library = content.classes.library()[0]()
             timeout_counter = 0
+            
+            # Auto-cleanup: remove released films and ended shows from Plex watchlist after threshold days
+            cleanup_watchlist_items(plex_watchlist, library)
             
             # Update database with current collected status for entire library
             ui_print('updating database status ...')

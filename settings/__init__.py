@@ -434,6 +434,8 @@ settings_list = [
         setting('Debug printing', 'Please enter "true" or "false": ', ui_settings, 'debug'),
         setting('Log to file', 'Please enter "true" or "false": ', ui_settings, 'log'),
         setting('Watchlist loop interval (sec)', 'Please enter an integer value in seconds: ', ui_settings, 'loop_interval_seconds'),
+        setting('Watchlist cleanup threshold (days)', 'Please enter number of days (e.g. 30, 0 to disable): ', ui_settings, 'watchlist_cleanup_days', hidden=True,
+                help='Remove films (released in digital/physical) and ended shows from Plex watchlist after this many days. Default 30, use 0 to disable.'),
         setting('version', 'No snooping around! :D This is for compatability reasons.', ui_settings, 'version',
                 hidden=True),
     ]
