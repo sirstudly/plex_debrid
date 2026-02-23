@@ -323,7 +323,9 @@ class show(classes.media):
         self.watchlist = watchlist
         # Initialize Seasons to ensure it always exists
         self.Seasons = []
+        _watchlist_added_at = None
         if not isinstance(ratingKey, str):
+            _watchlist_added_at = getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None)
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
             if isinstance(self.user[0], list):
@@ -374,11 +376,10 @@ class show(classes.media):
                         self.leafCount += season_.leafCount
                         self.viewedLeafCount += season_.viewedLeafCount
                         self.duration += season_.duration if hasattr(season_,"duration") else 0
-        if not hasattr(self,"watchlistedAt"):
-            if hasattr(self,"addedAt"):
-                self.watchlistedAt = self.addedAt
-            else:
-                self.watchlistedAt = 0
+        if _watchlist_added_at is not None:
+            self.watchlistedAt = _watchlist_added_at
+        elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
+            self.watchlistedAt = getattr(self, 'addedAt', 0) or 0
 
 class movie(classes.media):
     def __init__(self, ratingKey):
@@ -388,7 +389,9 @@ class movie(classes.media):
             for user in users:
                 if library.ignore.user == user[0]:
                     token = user[1]
+        _watchlist_added_at = None
         if not isinstance(ratingKey, str):
+            _watchlist_added_at = getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None)
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
         elif ratingKey.startswith('plex://'):
@@ -398,11 +401,10 @@ class movie(classes.media):
         if hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
             self.__dict__.update(response.MediaContainer.Metadata[0].__dict__)
         self.EID = setEID(self)
-        if not hasattr(self,"watchlistedAt"):
-            if hasattr(self,"addedAt"):
-                self.watchlistedAt = self.addedAt
-            else:
-                self.watchlistedAt = 0
+        if _watchlist_added_at is not None:
+            self.watchlistedAt = _watchlist_added_at
+        elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
+            self.watchlistedAt = getattr(self, 'addedAt', 0) or 0
 
 class library(classes.library):
     name = 'Plex Library'

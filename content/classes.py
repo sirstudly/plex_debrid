@@ -1080,11 +1080,11 @@ class media:
                 released = datetime.datetime.utcnow() - datetime.datetime.strptime(self.originallyAvailableAt,
                                                                                    '%Y-%m-%d') - datetime.timedelta(hours=float(smallest_offset))
             if self.type == 'movie':
-                if released.days >= -30 and released.days <= 180:
+                if released.days >= -30 and released.days <= 180 and hasattr(self, 'watchlist'):
                     return self.available()
                 return released.days > 0
             else:
-                if released.days >= -1 and released.days <= 1:
+                if released.days >= -1 and released.days <= 1 and hasattr(self, 'watchlist'):
                     return self.available()
                 return released.days >= 0
         except Exception as e:
@@ -1111,55 +1111,57 @@ class media:
                         return False
                     return datetime.datetime.utcnow() > datetime.datetime.strptime(self.first_aired, '%Y-%m-%dT%H:%M:%S.000Z')
                 elif self.type == 'movie':
-                    release_date = None
-                    releases, header = trakt.get(
-                        'https://api.trakt.tv/movies/' + str(self.ids.trakt) + '/releases/')
-                    for release in releases:
-                        if release.release_type == 'digital' or release.release_type == 'physical' or release.release_type == 'tv':
-                            if release_date == None:
-                                release_date = release.release_date
-                            elif release.release_date is not None and datetime.datetime.strptime(release_date, '%Y-%m-%d') > datetime.datetime.strptime(release.release_date, '%Y-%m-%d'):
-                                release_date = release.release_date
-                    # If no release date was found, select the theatrical release date + 2 Month delay
-                    if release_date == None:
+                    trakt_id = getattr(getattr(self, 'ids', None), 'trakt', None)
+                    if trakt_id is not None:
+                        release_date = None
+                        releases, header = trakt.get(
+                            'https://api.trakt.tv/movies/' + str(trakt_id) + '/releases/')
                         for release in releases:
-                            if release_date == None:
-                                release_date = release.release_date
-                            elif release.release_date is not None and datetime.datetime.strptime(release_date, '%Y-%m-%d') > datetime.datetime.strptime(release.release_date, '%Y-%m-%d'):
-                                release_date = release.release_date
-                        if release_date is not None:
-                            release_date = datetime.datetime.strptime(release_date, '%Y-%m-%d') + datetime.timedelta(days=60)
-                            release_date = release_date.strftime("%Y-%m-%d")
-                    # Get trakt 'Latest HD/4k Releases' Lists to accept early releases
-                    match = False
-                    if trakt.early_releases == "true":
-                        trakt_lists, header = trakt.get(
-                            'https://api.trakt.tv/movies/' + str(self.ids.trakt) + '/lists/personal/popular')
-                        for trakt_list in trakt_lists:
-                            if regex.search(r'(latest|new).*?(releases)', trakt_list.name, regex.I):
-                                match = True
-                    # if release_date and delay have passed or the movie was released early
-                    if match:
-                        ui_print("item: '" + self.query() +
-                                 "' seems to be released prior to its official release date and will be downloaded.")
-                        return True
-                    if release_date is None:
-                        return False
-                    if hasattr(self, "offset_airtime"):
-                        for offset in self.offset_airtime:
-                            if datetime.datetime.utcnow() > (datetime.datetime.strptime(release_date, '%Y-%m-%d') + datetime.timedelta(hours=float(offset))):
-                                return True
-                            available = datetime.datetime.strptime(
-                                release_date, '%Y-%m-%d') + datetime.timedelta(hours=float(offset)) - datetime.datetime.utcnow()
-                            ui_print("item: '" + self.query() + "' is available in: " + "{:02d}d:{:02d}h:{:02d}m:{:02d}s".format(available.days, available.seconds // 3600, (
-                                available.seconds % 3600) // 60, available.seconds % 60) + (" (including offset of: " + offset + "h)" if offset != "0" else ""))
-                        return False
-                    available = datetime.datetime.strptime(
-                        release_date, '%Y-%m-%d') - datetime.datetime.utcnow()
-                    if not datetime.datetime.utcnow() > datetime.datetime.strptime(release_date, '%Y-%m-%d'):
-                        ui_print("item: '" + self.query() + "' is available in: " + "{:02d}d:{:02d}h:{:02d}m:{:02d}s".format(
-                            available.days, available.seconds // 3600, (available.seconds % 3600) // 60, available.seconds % 60))
-                    return datetime.datetime.utcnow() > datetime.datetime.strptime(release_date, '%Y-%m-%d')
+                            if release.release_type == 'digital' or release.release_type == 'physical' or release.release_type == 'tv':
+                                if release_date == None:
+                                    release_date = release.release_date
+                                elif release.release_date is not None and datetime.datetime.strptime(release_date, '%Y-%m-%d') > datetime.datetime.strptime(release.release_date, '%Y-%m-%d'):
+                                    release_date = release.release_date
+                        # If no release date was found, select the theatrical release date + 2 Month delay
+                        if release_date == None:
+                            for release in releases:
+                                if release_date == None:
+                                    release_date = release.release_date
+                                elif release.release_date is not None and datetime.datetime.strptime(release_date, '%Y-%m-%d') > datetime.datetime.strptime(release.release_date, '%Y-%m-%d'):
+                                    release_date = release.release_date
+                            if release_date is not None:
+                                release_date = datetime.datetime.strptime(release_date, '%Y-%m-%d') + datetime.timedelta(days=60)
+                                release_date = release_date.strftime("%Y-%m-%d")
+                        # Get trakt 'Latest HD/4k Releases' Lists to accept early releases
+                        match = False
+                        if trakt.early_releases == "true":
+                            trakt_lists, header = trakt.get(
+                                'https://api.trakt.tv/movies/' + str(trakt_id) + '/lists/personal/popular')
+                            for trakt_list in trakt_lists:
+                                if regex.search(r'(latest|new).*?(releases)', trakt_list.name, regex.I):
+                                    match = True
+                        # if release_date and delay have passed or the movie was released early
+                        if match:
+                            ui_print("item: '" + self.query() +
+                                     "' seems to be released prior to its official release date and will be downloaded.")
+                            return True
+                        if release_date is None:
+                            return False
+                        if hasattr(self, "offset_airtime"):
+                            for offset in self.offset_airtime:
+                                if datetime.datetime.utcnow() > (datetime.datetime.strptime(release_date, '%Y-%m-%d') + datetime.timedelta(hours=float(offset))):
+                                    return True
+                                available = datetime.datetime.strptime(
+                                    release_date, '%Y-%m-%d') + datetime.timedelta(hours=float(offset)) - datetime.datetime.utcnow()
+                                ui_print("item: '" + self.query() + "' is available in: " + "{:02d}d:{:02d}h:{:02d}m:{:02d}s".format(available.days, available.seconds // 3600, (
+                                    available.seconds % 3600) // 60, available.seconds % 60) + (" (including offset of: " + offset + "h)" if offset != "0" else ""))
+                            return False
+                        available = datetime.datetime.strptime(
+                            release_date, '%Y-%m-%d') - datetime.datetime.utcnow()
+                        if not datetime.datetime.utcnow() > datetime.datetime.strptime(release_date, '%Y-%m-%d'):
+                            ui_print("item: '" + self.query() + "' is available in: " + "{:02d}d:{:02d}h:{:02d}m:{:02d}s".format(
+                                available.days, available.seconds // 3600, (available.seconds % 3600) // 60, available.seconds % 60))
+                        return datetime.datetime.utcnow() > datetime.datetime.strptime(release_date, '%Y-%m-%d')
                 elif self.type == 'season':
                     try:
                         if not hasattr(self, 'first_aired') or self.first_aired is None:
