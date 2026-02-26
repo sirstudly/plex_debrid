@@ -745,8 +745,8 @@ def cleanup_watchlist_items(plex_watchlist, library):
             continue
         if not hasattr(item, 'type') or item.type not in ('movie', 'show'):
             continue
-        watchlisted_at = getattr(item, 'watchlistedAt', None) or getattr(item, 'addedAt', 0)
-        if watchlisted_at is None:
+        watchlisted_at = getattr(item, 'watchlistedAt', None) or getattr(item, 'addedAt', None)
+        if watchlisted_at is None or (isinstance(watchlisted_at, (int, float)) and watchlisted_at <= 0):
             ui_print(f'[plex cleanup] skip "{getattr(item, "title", item.query())}": no watchlistedAt', debug=ui_settings.debug)
             continue
         try:
@@ -758,6 +758,10 @@ def cleanup_watchlist_items(plex_watchlist, library):
                 continue
         except (ValueError, OSError):
             ui_print(f'[plex cleanup] skip "{getattr(item, "title", item.query())}": invalid watchlistedAt', debug=ui_settings.debug)
+            continue
+        # Do not remove when add date is unreasonably old (likely release date used by mistake)
+        if (now - added_dt).days > 365 * 15:
+            ui_print(f'[plex cleanup] skip "{getattr(item, "title", item.query())}": watchlist date too old (likely wrong)', debug=ui_settings.debug)
             continue
         days_in_watchlist = (now - added_dt).days
         if days_in_watchlist < threshold:

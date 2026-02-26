@@ -116,7 +116,7 @@ class watchlist(classes.watchlist):
                 toc = time.perf_counter()
                 ui_print('took ' + str(round(toc - tic, 2)) + 's')
             try:
-                self.data.sort(key=lambda s: s.watchlistedAt, reverse=True)
+                self.data.sort(key=lambda s: (s.watchlistedAt is None, getattr(s, 'watchlistedAt') or 0), reverse=True)
             except:
                 ui_print("[plex error]: (watchlist exception): could not sort watchlist chronologically for unknown reason", debug=ui_settings.debug)
         except Exception as e:
@@ -143,6 +143,10 @@ class watchlist(classes.watchlist):
             # Update user list if needed
             if not entry.user[0] in cached_item.user:
                 cached_item.user.append(entry.user[0])
+            # Use watchlist date from this run's API entry if present (listing may include addedAt/watchlistedAt)
+            entry_added = getattr(entry, 'addedAt', None) or getattr(entry, 'watchlistedAt', None)
+            if entry_added is not None and (not isinstance(entry_added, (int, float)) or entry_added > 0):
+                cached_item.watchlistedAt = entry_added
             return cached_item
         return None
     
@@ -270,7 +274,7 @@ class watchlist(classes.watchlist):
                 if not entry in new_watchlist:
                     self.data.remove(entry)
             try:
-                self.data.sort(key=lambda s: s.watchlistedAt, reverse=True)
+                self.data.sort(key=lambda s: (s.watchlistedAt is None, getattr(s, 'watchlistedAt') or 0), reverse=True)
             except:
                 ui_print("[plex error]: (watchlist exception): could not sort watchlist chronologically for unknown reason", debug=ui_settings.debug)
         except Exception as e:
@@ -379,7 +383,18 @@ class show(classes.media):
         if _watchlist_added_at is not None:
             self.watchlistedAt = _watchlist_added_at
         elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
-            self.watchlistedAt = getattr(self, 'addedAt', 0) or 0
+            _fallback = getattr(self, 'addedAt', None) or 0
+            if _fallback and getattr(self, 'originallyAvailableAt', None):
+                try:
+                    if isinstance(_fallback, str) and _fallback[:10] == (self.originallyAvailableAt or '')[:10]:
+                        _fallback = None
+                    elif isinstance(_fallback, (int, float)) and _fallback > 0:
+                        import datetime as _dt
+                        if _dt.datetime.utcfromtimestamp(_fallback).year < 2010:
+                            _fallback = None
+                except (ValueError, OSError):
+                    pass
+            self.watchlistedAt = _fallback if _fallback else None
 
 class movie(classes.media):
     def __init__(self, ratingKey):
@@ -404,7 +419,19 @@ class movie(classes.media):
         if _watchlist_added_at is not None:
             self.watchlistedAt = _watchlist_added_at
         elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
-            self.watchlistedAt = getattr(self, 'addedAt', 0) or 0
+            _fallback = getattr(self, 'addedAt', None) or 0
+            # Avoid using metadata addedAt when it looks like release date (would cause wrong cleanup)
+            if _fallback and getattr(self, 'originallyAvailableAt', None):
+                try:
+                    if isinstance(_fallback, str) and _fallback[:10] == (self.originallyAvailableAt or '')[:10]:
+                        _fallback = None
+                    elif isinstance(_fallback, (int, float)) and _fallback > 0:
+                        import datetime as _dt
+                        if _dt.datetime.utcfromtimestamp(_fallback).year < 2010:
+                            _fallback = None
+                except (ValueError, OSError):
+                    pass
+            self.watchlistedAt = _fallback if _fallback else None
 
 class library(classes.library):
     name = 'Plex Library'
