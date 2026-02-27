@@ -740,6 +740,16 @@ def cleanup_watchlist_items(plex_watchlist, library):
     plex_service = content.services.plex.watchlist
     items_to_remove = []
     considered = 0
+
+    def _item_label(it):
+        s = getattr(it, 'title', None)
+        if s is not None:
+            return s
+        try:
+            return it.query()
+        except Exception:
+            return getattr(it, 'ratingKey', 'unknown') or 'unknown'
+
     for item in list(plex_watchlist.data):
         if not hasattr(item, 'watchlist') or item.watchlist != plex_service:
             continue
@@ -747,7 +757,7 @@ def cleanup_watchlist_items(plex_watchlist, library):
             continue
         watchlisted_at = getattr(item, 'watchlistedAt', None) or getattr(item, 'addedAt', None)
         if watchlisted_at is None or (isinstance(watchlisted_at, (int, float)) and watchlisted_at <= 0):
-            ui_print(f'[plex cleanup] skip "{getattr(item, "title", item.query())}": no watchlistedAt', debug=ui_settings.debug)
+            ui_print(f'[plex cleanup] skip "{_item_label(item)}": no watchlistedAt', debug=ui_settings.debug)
             continue
         try:
             if isinstance(watchlisted_at, (int, float)):
@@ -757,11 +767,11 @@ def cleanup_watchlist_items(plex_watchlist, library):
             else:
                 continue
         except (ValueError, OSError):
-            ui_print(f'[plex cleanup] skip "{getattr(item, "title", item.query())}": invalid watchlistedAt', debug=ui_settings.debug)
+            ui_print(f'[plex cleanup] skip "{_item_label(item)}": invalid watchlistedAt', debug=ui_settings.debug)
             continue
         # Do not remove when add date is unreasonably old (likely release date used by mistake)
         if (now - added_dt).days > 365 * 15:
-            ui_print(f'[plex cleanup] skip "{getattr(item, "title", item.query())}": watchlist date too old (likely wrong)', debug=ui_settings.debug)
+            ui_print(f'[plex cleanup] skip "{_item_label(item)}": watchlist date too old (likely wrong)', debug=ui_settings.debug)
             continue
         days_in_watchlist = (now - added_dt).days
         if days_in_watchlist < threshold:
@@ -774,11 +784,11 @@ def cleanup_watchlist_items(plex_watchlist, library):
                     item.match('content.services.trakt')
                 if item.available():
                     items_to_remove.append(item)
-                    ui_print(f'[plex cleanup] will remove movie "{item.title}" ({item.year}) (released, {days_in_watchlist}d in list)', debug=ui_settings.debug)
+                    ui_print(f'[plex cleanup] will remove movie "{_item_label(item)}" ({getattr(item, "year", "")}) (released, {days_in_watchlist}d in list)', debug=ui_settings.debug)
                 else:
-                    ui_print(f'[plex cleanup] skip movie "{item.title}": not available (released)', debug=ui_settings.debug)
+                    ui_print(f'[plex cleanup] skip movie "{_item_label(item)}": not available (released)', debug=ui_settings.debug)
             except Exception as e:
-                ui_print(f'[plex cleanup] skip movie "{getattr(item, "title", "")}": {e}', debug=ui_settings.debug)
+                ui_print(f'[plex cleanup] skip movie "{_item_label(item)}": {e}', debug=ui_settings.debug)
         elif item.type == 'show':
             try:
                 has_ended = item.hasended()
@@ -786,19 +796,19 @@ def cleanup_watchlist_items(plex_watchlist, library):
                 # Remove if ended (from Plex/Trakt metadata) OR fully collected (all episodes in library)
                 if has_ended or is_collected:
                     items_to_remove.append(item)
-                    ui_print(f'[plex cleanup] will remove show "{item.title}" ({getattr(item, "year", "")}) (hasended={has_ended}, collected={is_collected}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
+                    ui_print(f'[plex cleanup] will remove show "{_item_label(item)}" ({getattr(item, "year", "")}) (hasended={has_ended}, collected={is_collected}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
                 else:
-                    ui_print(f'[plex cleanup] skip show "{item.title}": hasended={has_ended} (status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}), collected={is_collected}', debug=ui_settings.debug)
+                    ui_print(f'[plex cleanup] skip show "{_item_label(item)}": hasended={has_ended} (status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}), collected={is_collected}', debug=ui_settings.debug)
             except Exception as e:
-                ui_print(f'[plex cleanup] skip show "{getattr(item, "title", "")}": {e}', debug=ui_settings.debug)
+                ui_print(f'[plex cleanup] skip show "{_item_label(item)}": {e}', debug=ui_settings.debug)
     ui_print(f'[plex cleanup] run: threshold={threshold}d, {len(plex_watchlist.data)} Plex items, {considered} eligible (>={threshold}d), removing {len(items_to_remove)}')
     ui_print(f'[plex cleanup] considered {considered} items (>={threshold}d), removing {len(items_to_remove)}', debug=ui_settings.debug)
     for item in items_to_remove:
         try:
             plex_watchlist.remove(item)
-            ui_print(f'[plex cleanup] removed "{item.title}" ({getattr(item, "year", "")}) from watchlist (released/ended, >{threshold}d in list)')
+            ui_print(f'[plex cleanup] removed "{_item_label(item)}" ({getattr(item, "year", "")}) from watchlist (released/ended, >{threshold}d in list)')
         except Exception as e:
-            ui_print(f'[plex cleanup] error removing {item.query()}: {e}', debug=ui_settings.debug)
+            ui_print(f'[plex cleanup] error removing {_item_label(item)}: {e}', debug=ui_settings.debug)
 
 def threaded(stop):
     ui_cls()
