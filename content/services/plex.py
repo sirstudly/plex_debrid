@@ -137,6 +137,7 @@ class watchlist(classes.watchlist):
         store.save(list(self._cache.values()), "plex", "watchlist_cache")
 
     def _get_cached_item(self, entry):
+        import datetime as _dt
         cache_key = entry.ratingKey
         if cache_key in self._cache:
             cached_item = self._cache[cache_key]
@@ -147,6 +148,22 @@ class watchlist(classes.watchlist):
             entry_added = getattr(entry, 'addedAt', None) or getattr(entry, 'watchlistedAt', None)
             if entry_added is not None and (not isinstance(entry_added, (int, float)) or entry_added > 0):
                 cached_item.watchlistedAt = entry_added
+            else:
+                # If listing didn't give a date, don't keep a cached date that's >1y old (likely wrong)
+                w = getattr(cached_item, 'watchlistedAt', None)
+                if w is not None:
+                    try:
+                        if isinstance(w, (int, float)) and w > 0:
+                            d = _dt.datetime.utcfromtimestamp(w)
+                        elif isinstance(w, str) and w.strip():
+                            d = _dt.datetime.strptime(w[:10], '%Y-%m-%d')
+                        else:
+                            d = None
+                        if d is not None and (_dt.datetime.utcnow() - d).days > 365:
+                            cached_item.watchlistedAt = None
+                            ui_print(f'[plex watchlist date] cached "{getattr(cached_item, "title", "?")}": cleared watchlistedAt (>{365}d, likely wrong)', debug=ui_settings.debug)
+                    except (ValueError, OSError):
+                        pass
             return cached_item
         return None
     
@@ -330,6 +347,9 @@ class show(classes.media):
         _watchlist_added_at = None
         if not isinstance(ratingKey, str):
             _watchlist_added_at = getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None)
+            _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
+            _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
+            ui_print(f'[plex watchlist date] show entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
             if isinstance(self.user[0], list):
@@ -382,19 +402,35 @@ class show(classes.media):
                         self.duration += season_.duration if hasattr(season_,"duration") else 0
         if _watchlist_added_at is not None:
             self.watchlistedAt = _watchlist_added_at
+            ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": from listing entry (addedAt/watchlistedAt)', debug=ui_settings.debug)
         elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
             _fallback = getattr(self, 'addedAt', None) or 0
             if _fallback and getattr(self, 'originallyAvailableAt', None):
                 try:
+                    import datetime as _dt
                     if isinstance(_fallback, str) and _fallback[:10] == (self.originallyAvailableAt or '')[:10]:
                         _fallback = None
+                        ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": rejected metadata addedAt (same as originallyAvailableAt)', debug=ui_settings.debug)
                     elif isinstance(_fallback, (int, float)) and _fallback > 0:
-                        import datetime as _dt
-                        if _dt.datetime.utcfromtimestamp(_fallback).year < 2010:
+                        _dt_parsed = _dt.datetime.utcfromtimestamp(_fallback)
+                        if _dt_parsed.year < 2010:
                             _fallback = None
+                            ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": rejected metadata addedAt (year {_dt_parsed.year} < 2010)', debug=ui_settings.debug)
+                        elif (_dt.datetime.utcnow() - _dt_parsed).days > 365:
+                            _fallback = None
+                            ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": rejected metadata addedAt (>{365}d ago, likely catalog date)', debug=ui_settings.debug)
+                    elif isinstance(_fallback, str):
+                        _dt_parsed = _dt.datetime.strptime(_fallback[:10], '%Y-%m-%d')
+                        if (_dt.datetime.utcnow() - _dt_parsed).days > 365:
+                            _fallback = None
+                            ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": rejected metadata addedAt (>{365}d ago, likely catalog date)', debug=ui_settings.debug)
                 except (ValueError, OSError):
                     pass
             self.watchlistedAt = _fallback if _fallback else None
+            if _fallback:
+                ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": from metadata addedAt (fallback)', debug=ui_settings.debug)
+            else:
+                ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": no watchlistedAt (will skip cleanup)', debug=ui_settings.debug)
 
 class movie(classes.media):
     def __init__(self, ratingKey):
@@ -407,6 +443,9 @@ class movie(classes.media):
         _watchlist_added_at = None
         if not isinstance(ratingKey, str):
             _watchlist_added_at = getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None)
+            _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
+            _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
+            ui_print(f'[plex watchlist date] movie entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
         elif ratingKey.startswith('plex://'):
@@ -418,20 +457,35 @@ class movie(classes.media):
         self.EID = setEID(self)
         if _watchlist_added_at is not None:
             self.watchlistedAt = _watchlist_added_at
+            ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": from listing entry (addedAt/watchlistedAt)', debug=ui_settings.debug)
         elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
             _fallback = getattr(self, 'addedAt', None) or 0
-            # Avoid using metadata addedAt when it looks like release date (would cause wrong cleanup)
             if _fallback and getattr(self, 'originallyAvailableAt', None):
                 try:
+                    import datetime as _dt
                     if isinstance(_fallback, str) and _fallback[:10] == (self.originallyAvailableAt or '')[:10]:
                         _fallback = None
+                        ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": rejected metadata addedAt (same as originallyAvailableAt)', debug=ui_settings.debug)
                     elif isinstance(_fallback, (int, float)) and _fallback > 0:
-                        import datetime as _dt
-                        if _dt.datetime.utcfromtimestamp(_fallback).year < 2010:
+                        _dt_parsed = _dt.datetime.utcfromtimestamp(_fallback)
+                        if _dt_parsed.year < 2010:
                             _fallback = None
+                            ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": rejected metadata addedAt (year {_dt_parsed.year} < 2010)', debug=ui_settings.debug)
+                        elif (_dt.datetime.utcnow() - _dt_parsed).days > 365:
+                            _fallback = None
+                            ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": rejected metadata addedAt (>{365}d ago, likely catalog date)', debug=ui_settings.debug)
+                    elif isinstance(_fallback, str):
+                        _dt_parsed = _dt.datetime.strptime(_fallback[:10], '%Y-%m-%d')
+                        if (_dt.datetime.utcnow() - _dt_parsed).days > 365:
+                            _fallback = None
+                            ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": rejected metadata addedAt (>{365}d ago, likely catalog date)', debug=ui_settings.debug)
                 except (ValueError, OSError):
                     pass
             self.watchlistedAt = _fallback if _fallback else None
+            if _fallback:
+                ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": from metadata addedAt (fallback)', debug=ui_settings.debug)
+            else:
+                ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": no watchlistedAt (will skip cleanup)', debug=ui_settings.debug)
 
 class library(classes.library):
     name = 'Plex Library'
