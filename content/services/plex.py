@@ -160,8 +160,8 @@ class watchlist(classes.watchlist):
                         else:
                             d = None
                         if d is not None and (_dt.datetime.utcnow() - d).days > 365:
-                            cached_item.watchlistedAt = None
-                            ui_print(f'[plex watchlist date] cached "{getattr(cached_item, "title", "?")}": cleared watchlistedAt (>{365}d, likely wrong)', debug=ui_settings.debug)
+                            cached_item.watchlistedAt = time.time()
+                            ui_print(f'[plex watchlist date] cached "{getattr(cached_item, "title", "?")}": set watchlistedAt to now (was >{365}d, likely wrong)', debug=ui_settings.debug)
                     except (ValueError, OSError):
                         pass
             return cached_item
@@ -426,11 +426,11 @@ class show(classes.media):
                             ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": rejected metadata addedAt (>{365}d ago, likely catalog date)', debug=ui_settings.debug)
                 except (ValueError, OSError):
                     pass
-            self.watchlistedAt = _fallback if _fallback else None
+            self.watchlistedAt = _fallback if _fallback else time.time()
             if _fallback:
                 ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": from metadata addedAt (fallback)', debug=ui_settings.debug)
             else:
-                ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": no watchlistedAt (will skip cleanup)', debug=ui_settings.debug)
+                ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": using current time as estimate (listing had no date)', debug=ui_settings.debug)
 
 class movie(classes.media):
     def __init__(self, ratingKey):
@@ -481,11 +481,11 @@ class movie(classes.media):
                             ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": rejected metadata addedAt (>{365}d ago, likely catalog date)', debug=ui_settings.debug)
                 except (ValueError, OSError):
                     pass
-            self.watchlistedAt = _fallback if _fallback else None
+            self.watchlistedAt = _fallback if _fallback else time.time()
             if _fallback:
                 ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": from metadata addedAt (fallback)', debug=ui_settings.debug)
             else:
-                ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": no watchlistedAt (will skip cleanup)', debug=ui_settings.debug)
+                ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": using current time as estimate (listing had no date)', debug=ui_settings.debug)
 
 class library(classes.library):
     name = 'Plex Library'
