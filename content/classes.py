@@ -796,7 +796,8 @@ class media:
         # update media items ignore count
         if self in media.ignore_queue:
             match = next((x for x in media.ignore_queue if self == x), None)
-            self.ignored_count = match.ignored_count
+            if match is not None:
+                self.ignored_count = match.ignored_count
         # remove versions that dont apply
         for version in versions[:]:
             if not version.applies(self):
@@ -917,7 +918,8 @@ class media:
         all_versions = []
         if self in media.ignore_queue:
             match = next((x for x in media.ignore_queue if self == x), None)
-            self.ignored_count = match.ignored_count
+            if match is not None:
+                self.ignored_count = match.ignored_count
         for version in releases.sort.versions:
             if not '\u0336' in version[0]:
                 all_versions += [releases.sort.version(
@@ -1046,12 +1048,17 @@ class media:
             ui_print(message + ' - attempt ' + str(self.ignored_count) + '/' + str(retries))
         else:
             match = next((x for x in media.ignore_queue if self == x), None)
-            if match.ignored_count < retries:
-                match.ignored_count += 1
-                ui_print(message + ' - attempt ' + str(match.ignored_count) + '/' + str(retries))
+            if match is not None:
+                if match.ignored_count < retries:
+                    match.ignored_count += 1
+                    ui_print(message + ' - attempt ' + str(match.ignored_count) + '/' + str(retries))
+                else:
+                    media.ignore_queue.remove(match)
+                    ignore.add(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests, library)
             else:
-                media.ignore_queue.remove(match)
-                ignore.add(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests, library)
+                self.ignored_count = 1
+                media.ignore_queue += [self]
+                ui_print(message + ' - attempt ' + str(self.ignored_count) + '/' + str(retries))
 
     def unwatch(self):
         ignore.remove(self)
