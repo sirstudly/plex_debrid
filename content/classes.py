@@ -1422,6 +1422,9 @@ class media:
         elif self.type == 'show':
             ui_print(f"processing show: {self.title} ({self.year})", debug=ui_settings.debug)
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
+            if sqlite_store.is_media_blacklisted(self):
+                ui_print(f"show: '{self.title} ({self.year})' is blacklisted, skipping.", debug=ui_settings.debug)
+                return
             if self.collected(library) and self.hasended():
                 ui_print(f"show: '{self.title} ({self.year})' is in library and not a continuing series. Removing from watchlists.")
                 self._remove_from_watchlist(self, plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests)
@@ -1550,6 +1553,8 @@ class media:
                     # Download all remaining seasons by starting a thread for each season.
                     results = [None] * len(self.Seasons)
                     threads = []
+                    for Season in self.Seasons:
+                        Season._parent_show = self
                     # start thread for each season
                     for index, Season in enumerate(self.Seasons):
                         results[index] = Season.download(
@@ -1568,6 +1573,10 @@ class media:
                     toc = time.perf_counter()
                     ui_print('took ' + str(round(toc - tic, 2)) + 's')
         elif self.type == 'season':
+            parent_show = getattr(self, '_parent_show', None)
+            if parent_show and sqlite_store.is_media_blacklisted(parent_show):
+                ui_print(f"season: '{self.parentTitle} {self.title}' - show blacklisted, skipping.", debug=ui_settings.debug)
+                return False, False
             ui_print(f"processing: {self.parentTitle} {self.title}", debug=ui_settings.debug)
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
             debrid_downloaded = False
@@ -1638,6 +1647,9 @@ class media:
                         episode.skip_download = True
             # Check if all episodes were successfuly downloaded, download them or queue them to be ignored otherwise
             for episode in self.Episodes:
+                if parent_show and sqlite_store.is_media_blacklisted(parent_show):
+                    ui_print(f"season: '{self.parentTitle} {self.title}' - show blacklisted, stopping episode processing.", debug=ui_settings.debug)
+                    break
                 if len(episode.versions()) > 0:
                     downloaded = False
                     retryep = True
