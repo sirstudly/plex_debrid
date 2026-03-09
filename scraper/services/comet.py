@@ -5,9 +5,44 @@ import base64
 import json
 name = "comet"
 
+# Default config when no manifest URL is set (placeholder RealDebrid API key; searches still work)
+_DEFAULT_COMET_CONFIG = {
+    "maxResultsPerResolution": 0,
+    "maxSize": 0,
+    "cachedOnly": False,
+    "sortCachedUncachedTogether": False,
+    "removeTrash": True,
+    "resultFormat": ["all"],
+    "debridServices": [
+        {
+            "service": "realdebrid",
+            "apiKey": "REALDEBRIDAPIKEYGOESHEREBUTITSNOTREQUIREDFORSEARCHES"
+        }
+    ],
+    "enableTorrent": False,
+    "deduplicateStreams": False,
+    "scrapeDebridAccountTorrents": False,
+    "debridStreamProxyPassword": "",
+    "languages": {
+        "required": [],
+        "allowed": [],
+        "exclude": [],
+        "preferred": []
+    },
+    "resolutions": {
+        "r2160p": False,
+        "r1440p": False
+    },
+    "options": {
+        "remove_ranks_under": -10000000000,
+        "allow_english_in_languages": False,
+        "remove_unknown_languages": False
+    }
+}
+
 request_timeout_sec = "60"
 rate_limit_sec = "10"  # minimum number of seconds between requests
-manifest_json_url = ""  # this is mandatory otherwise non-cached searches will fail without a valid debrid account
+manifest_json_url = ""  # optional; if set (valid manifest URL), used for base URL and config; else default config with placeholder API key is used
 
 
 def request(func, *args):
@@ -89,11 +124,12 @@ def scrape(query, altquery):
     if 'comet' not in active:
         return []
 
-    url_search = regex.search(r"(https?:\/\/[^\/]+).*manifest.json", manifest_json_url, regex.I)
-    if not url_search:
-        ui_print('[comet] error: the scraper parameters URL is not configured correctly: ' + manifest_json_url)
-        return []
-    base_url = url_search.group(1)
+    url_search = regex.search(r"(https?:\/\/[^\/]+).*manifest\.json", manifest_json_url or "", regex.I)
+    if url_search and manifest_json_url and manifest_json_url.strip().endswith("manifest.json"):
+        base_url = url_search.group(1)
+    else:
+        base_url = "https://comet.elfhosted.com"
+    base64_config = _get_base64_config()
 
     if altquery == "(.*)":
         altquery = query
@@ -119,8 +155,8 @@ def scrape(query, altquery):
     ui_print(f'[comet]: searching for {type}s with ID={imdb_id}', ui_settings.debug)
     session = custom_session(get_rate_limit=float(rate_limit_sec), post_rate_limit=float(rate_limit_sec))
     if type == 'movie':
-        return scrape_imdb_movie(session, base_url, _get_base64_config(), imdb_id)
-    return scrape_imdb_series(session, base_url, _get_base64_config(), imdb_id, s, e)
+        return scrape_imdb_movie(session, base_url, base64_config, imdb_id)
+    return scrape_imdb_series(session, base_url, base64_config, imdb_id, s, e)
 
 
 def scrape_imdb_movie(session: requests.Session, base_url: str, base64_config: str, imdb_id: str) -> list:
@@ -144,52 +180,46 @@ def collate_releases_from_response(response: requests.Response) -> list:
         if hasattr(result, "description") and (result.description == "Invalid Comet config." or regex.search(r'(?<=Invalid )(.*)(?= account)', result.description)):
             ui_print(f'[comet] error: {result.description}')
             return scraped_releases
-        elif not hasattr(result, "description"):
-            ui_print(f'[comet] error: Missing description in result')
+
+        # Skip loading placeholder (no behaviorHints or "First search for this media...")
+        if hasattr(result, "description") and "First search for this media" in result.description:
             continue
-        elif not hasattr(result, "url") and not hasattr(result, "infoHash"):
-            ui_print(f'[comet] error: Missing url/infoHash in result {result.description}')
+        if not hasattr(result, "behaviorHints") or not hasattr(result.behaviorHints, "bingeGroup"):
             continue
 
         try:
-            title = result.description.split("\n")[0]
-            infohash = False
-            if hasattr(result, "infoHash"):
-                infohash = result.infoHash
-            else:
-                infohash_pattern = regex.compile(r"(?!.*playback\/)[a-fA-F0-9]{40}")
-                infohash = infohash_pattern.search(result.url).group()
-
-            if not infohash:
-                ui_print(f'[comet]: error: infohash not found for title: {title}')
+            # Infohash is the last segment of behaviorHints.bingeGroup (e.g. "comet|realdebrid|<40-char-hex>")
+            binge_group = getattr(result.behaviorHints, "bingeGroup", "") or ""
+            parts = binge_group.split("|")
+            infohash = parts[-1].strip() if parts else None
+            if not infohash or len(infohash) != 40 or not regex.match(r"^[a-fA-F0-9]{40}$", infohash):
                 continue
 
-            size = int(result.torrentSize) / 1000000000 if hasattr(result, "torrentSize") else 0
+            title = ""
+            if hasattr(result, "description") and result.description:
+                title = result.description.split("\n")[0].strip()
+            if not title and hasattr(result.behaviorHints, "filename"):
+                title = getattr(result.behaviorHints, "filename", "") or ""
+
+            size = 0
+            if hasattr(result.behaviorHints, "videoSize") and result.behaviorHints.videoSize is not None:
+                size = int(result.behaviorHints.videoSize) / 1000000000
+
             links = ['magnet:?xt=urn:btih:' + infohash + '&dn=&tr=']
             seeds = 0  # not available
-            source = regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.description).group() \
-                if regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.description) else "unknown"
+            source = "unknown"
+            if hasattr(result, "description") and result.description and regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.description):
+                source = regex.search(r'(?<=🔎 )(.*)(?=\n|$)', result.description).group()
             scraped_releases += [releases.release(
-                '[comet: '+source+']', 'torrent', title, [], size, links, seeds)]
+                '[comet: ' + source + ']', 'torrent', title or "Unknown", [], size, links, seeds)]
         except Exception as e:
             ui_print('[comet] stream parsing error: ' + str(e))
             continue
     return scraped_releases
 
 
-# Retrieves the base64 configuration parameters from manifest_json_url
-# If it isn't defined, then create a default profile without a debrid key
+# Retrieves the base64 configuration from manifest_json_url, or returns a default config if none is set.
 def _get_base64_config() -> str:
-
-    if manifest_json_url.endswith("manifest.json"):
-        return manifest_json_url.split("/")[-2]
-
-    return base64.b64encode(json.dumps({
-        "indexers": ["bitsearch","eztv","thepiratebay","therarbg","yts"],
-        "maxResults": 0,
-        "resolutions": ["All"],
-        "languages": ["All"],
-        "debridService": "realdebrid",
-        "debridApiKey": "",
-        "debridStreamProxyPassword": ""
-    }).encode("utf-8")).decode("utf-8")
+    if manifest_json_url and manifest_json_url.strip().endswith("manifest.json"):
+        return manifest_json_url.strip().rstrip("/").split("/")[-2]
+    return base64.b64encode(json.dumps(_DEFAULT_COMET_CONFIG).encode("utf-8")).decode("utf-8")
