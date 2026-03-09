@@ -807,6 +807,21 @@ def cleanup_watchlist_items(plex_watchlist, library):
         try:
             plex_watchlist.remove(item)
             ui_print(f'[plex cleanup] removed "{_item_label(item)}" ({getattr(item, "year", "")}) from watchlist (released/ended, >{threshold}d in list)')
+            # Clear ignore flag so re-adding later gets a fresh download attempt (may be available now)
+            try:
+                if hasattr(item, 'unwatch'):
+                    item.unwatch()
+                # For shows, also clear ignore on all episodes so each gets a fresh attempt when re-added
+                if getattr(item, 'type', None) == 'show' and hasattr(item, 'Seasons'):
+                    for season in item.Seasons or []:
+                        for episode in getattr(season, 'Episodes', []) or []:
+                            try:
+                                if hasattr(episode, 'unwatch'):
+                                    episode.unwatch()
+                            except Exception:
+                                pass
+            except Exception:
+                pass
         except Exception as e:
             ui_print(f'[plex cleanup] error removing {_item_label(item)}: {e}', debug=ui_settings.debug)
 
