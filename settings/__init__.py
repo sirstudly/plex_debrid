@@ -398,6 +398,10 @@ settings_list = [
                 help='This setting lets you control the comet scraping parameters. Visit "https://comet.elfhosted.com/configure" and configure your settings. Click on "Copy Link" and paste it here.', hidden=True),
         setting('TorrentsDB Scraper Parameters', 'Please enter a valid TorrentsDB manifest URL: ', scraper.services.torrentsdb, 'manifest_json_url', entry="parameter",
                 help='This setting lets you control the torrentsdb scraping parameters. Visit "https://torrentsdb.com" and configure your settings. Click on "Copy URL" and paste it here.', hidden=True),
+        setting('Debridio Request Timeout', 'Please enter the request timeout in seconds: ', scraper.services.debridio, 'request_timeout_sec', hidden=True),
+        setting('Debridio Rate Limit', 'Please enter the minimum number of seconds between requests: ', scraper.services.debridio, 'rate_limit_sec', hidden=True),
+        setting('Debridio Scraper Parameters', 'Please enter a valid Debridio manifest URL: ', scraper.services.debridio, 'manifest_json_url', entry="parameter",
+                help='This setting lets you control the Debridio scraping parameters. Visit https://debridio.com and configure your addon, then copy your manifest URL (must end with manifest.json) and paste it here.', hidden=True),
             ]
         ],
     ['Debrid Services', [
