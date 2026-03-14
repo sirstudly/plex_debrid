@@ -833,7 +833,7 @@ def threaded(stop):
         print("Type 'exit' to return to the main menu.")
     timeout = 5
     regular_check = int(ui_settings.loop_interval_seconds)
-    timeout_counter = 0
+    last_full_run_start = 0  # 0 so first full run can start when condition is first checked
     library = content.classes.library()[0]()
     # refresh Real-Debrid cache on startup
     if debrid.services.realdebrid.cache.should_refresh():
@@ -905,7 +905,9 @@ def threaded(stop):
                     if sqlite_store.is_media_blacklisted(element):
                         ui_print(f"skipping blacklisted item: {element.query()}", ui_settings.debug)
                         continue
-                    
+                    # Skip items in retry queue so retries run on full runs only (loop_interval apart)
+                    if element in content.classes.media.ignore_queue:
+                        continue
                     newly_added = True
                     if element.type == "show":
                         if hasattr(element, "Seasons"):
@@ -930,7 +932,8 @@ def threaded(stop):
                     if newly_added:
                         element.download(library=library, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
             ui_print('done')
-        elif timeout_counter >= regular_check:
+        elif (time.time() - last_full_run_start) >= regular_check:
+            last_full_run_start = time.time()
             # refresh Real-Debrid cache if needed
             if debrid.services.realdebrid.cache.should_refresh():
                 ui_print('refreshing Real-Debrid cache...')
@@ -944,8 +947,8 @@ def threaded(stop):
             # get local sqlite requests
             sqlite_requests = content.services.sqlite.watchlist()
             # combine all content; sort so continuing shows are checked first, then by newest
-            # (full run processes every item in one go - with a large watchlist the run can take hours or days,
-            # so the "loop interval" is effectively: previous run duration + loop_interval_seconds)
+            # Loop interval = minimum time between full-run *starts* (includes run duration).
+            # If run takes 5h and interval is 6h, wait 1h after run. If run takes 7h, start next run immediately.
             watchlists = plex_watchlist + trakt_watchlist + overseerr_requests + sqlite_requests
             try:
                 def _full_run_sort_key(s):
@@ -958,8 +961,7 @@ def threaded(stop):
                 except Exception:
                     ui_print("couldnt sort monitored media, using default order.", ui_settings.debug)
             library = content.classes.library()[0]()
-            timeout_counter = 0
-            
+
             # Auto-cleanup: remove released films and ended shows from Plex watchlist after threshold days
             cleanup_watchlist_items(plex_watchlist, library)
             
@@ -1037,8 +1039,6 @@ def threaded(stop):
                             ui_print('done')
                         t0 = time.time()
             ui_print('done')
-        else:
-            timeout_counter += timeout
         time.sleep(timeout)
 
 def download_script_run():
