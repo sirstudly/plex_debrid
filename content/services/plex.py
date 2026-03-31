@@ -9,6 +9,7 @@ session = custom_session(get_rate_limit=1.0, post_rate_limit=1.0)  # 1 second be
 users = []
 headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
 current_library = []
+_activity_watchlist_date_cache = {}
 
 def setup(cls, new=False):
     from content.services import setup
@@ -51,6 +52,90 @@ def post(session: requests.Session, url: str, data):
     except Exception as e:
         ui_print("plex error: (json exception): " + str(e), debug=ui_settings.debug)
         return None
+
+
+def _normalize_watchlisted_at(value):
+    """Normalize watchlist date to unix timestamp int when possible."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value) if value > 0 else None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        # Numeric string timestamp
+        if s.isdigit():
+            i = int(s)
+            return i if i > 0 else None
+        # ISO timestamps from community API, e.g. 2024-09-08T11:55:31.681Z
+        try:
+            dt = datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return int(dt.timestamp())
+        except Exception:
+            pass
+        # Date-only fallback
+        try:
+            dt = datetime.datetime.strptime(s[:10], "%Y-%m-%d")
+            return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp())
+        except Exception:
+            return None
+    return None
+
+
+def get_watchlist_activity_added_at(metadata_id: str, token: str):
+    """
+    Query Plex community activity feed and return first ActivityWatchlist date
+    as unix timestamp int for this metadata item and user token.
+    """
+    cache_key = f"{token}:{metadata_id}"
+    if cache_key in _activity_watchlist_date_cache:
+        return _activity_watchlist_date_cache[cache_key]
+    try:
+        gql = """
+        query GetActivityFeed($first: PaginationInt!, $after: String, $metadataID: ID, $types: [ActivityType!]!, $includeDescendants: Boolean = false) {
+          activityFeed(first: $first, after: $after, metadataID: $metadataID, types: $types, includeDescendants: $includeDescendants) {
+            nodes { __typename date id }
+            pageInfo { endCursor hasNextPage }
+          }
+        }
+        """
+        payload = {
+            "query": gql,
+            "variables": {
+                "first": 25,
+                "after": None,
+                "metadataID": metadata_id,
+                "types": ["WATCHLIST"],
+                "includeDescendants": True,
+            },
+            "operationName": "GetActivityFeed",
+        }
+        community_headers = {
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "x-plex-token": token,
+            "x-plex-client-identifier": "plex-debrid",
+            "x-plex-product": "Plex Debrid",
+            "x-plex-version": "1.0",
+        }
+        r = session.post("https://community.plex.tv/api", json=payload, headers=community_headers, timeout=30)
+        if r.status_code != 200:
+            _activity_watchlist_date_cache[cache_key] = None
+            return None
+        data = r.json()
+        nodes = (((data or {}).get("data") or {}).get("activityFeed") or {}).get("nodes") or []
+        for node in nodes:
+            if node.get("__typename") == "ActivityWatchlist":
+                ts = _normalize_watchlisted_at(node.get("date"))
+                _activity_watchlist_date_cache[cache_key] = ts
+                if ts is not None:
+                    ui_print(f'[plex watchlist date] metadata {metadata_id}: from activity feed', debug=ui_settings.debug)
+                return ts
+    except Exception as e:
+        ui_print(f'[plex watchlist date] activity feed lookup failed for {metadata_id}: {e}', debug=ui_settings.debug)
+    _activity_watchlist_date_cache[cache_key] = None
+    return None
 
 def setEID(self):
     EID = []
@@ -145,8 +230,8 @@ class watchlist(classes.watchlist):
             if not entry.user[0] in cached_item.user:
                 cached_item.user.append(entry.user[0])
             # Use watchlist date from this run's API entry if present (listing may include addedAt/watchlistedAt)
-            entry_added = getattr(entry, 'addedAt', None) or getattr(entry, 'watchlistedAt', None)
-            if entry_added is not None and (not isinstance(entry_added, (int, float)) or entry_added > 0):
+            entry_added = _normalize_watchlisted_at(getattr(entry, 'addedAt', None) or getattr(entry, 'watchlistedAt', None))
+            if entry_added is not None:
                 cached_item.watchlistedAt = entry_added
             else:
                 # If listing didn't give a date, don't keep a cached date that's >1y old (likely wrong)
@@ -346,7 +431,7 @@ class show(classes.media):
         self.Seasons = []
         _watchlist_added_at = None
         if not isinstance(ratingKey, str):
-            _watchlist_added_at = getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None)
+            _watchlist_added_at = _normalize_watchlisted_at(getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None))
             _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
             _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
             ui_print(f'[plex watchlist date] show entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
@@ -364,6 +449,8 @@ class show(classes.media):
             for user in users:
                 if library.ignore.user == user[0]:
                     token = user[1]
+        if _watchlist_added_at is None:
+            _watchlist_added_at = get_watchlist_activity_added_at(ratingKey, token)
         url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
         response = get(session, url)
         if not response == None and hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
@@ -402,7 +489,7 @@ class show(classes.media):
                         self.duration += season_.duration if hasattr(season_,"duration") else 0
         if _watchlist_added_at is not None:
             self.watchlistedAt = _watchlist_added_at
-            ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": from listing entry (addedAt/watchlistedAt)', debug=ui_settings.debug)
+            ui_print(f'[plex watchlist date] show "{getattr(self, "title", "?")}": from listing/activity (addedAt/watchlistedAt)', debug=ui_settings.debug)
         elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
             _fallback = getattr(self, 'addedAt', None) or 0
             if _fallback and getattr(self, 'originallyAvailableAt', None):
@@ -442,7 +529,7 @@ class movie(classes.media):
                     token = user[1]
         _watchlist_added_at = None
         if not isinstance(ratingKey, str):
-            _watchlist_added_at = getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None)
+            _watchlist_added_at = _normalize_watchlisted_at(getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None))
             _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
             _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
             ui_print(f'[plex watchlist date] movie entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
@@ -450,6 +537,8 @@ class movie(classes.media):
             ratingKey = ratingKey.ratingKey
         elif ratingKey.startswith('plex://'):
             ratingKey = ratingKey.split('/')[-1]
+        if _watchlist_added_at is None:
+            _watchlist_added_at = get_watchlist_activity_added_at(ratingKey, token)
         url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
         response = get(session, url)
         if hasattr(response, 'MediaContainer') and hasattr(response.MediaContainer, 'Metadata'):
@@ -457,7 +546,7 @@ class movie(classes.media):
         self.EID = setEID(self)
         if _watchlist_added_at is not None:
             self.watchlistedAt = _watchlist_added_at
-            ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": from listing entry (addedAt/watchlistedAt)', debug=ui_settings.debug)
+            ui_print(f'[plex watchlist date] movie "{getattr(self, "title", "?")}": from listing/activity (addedAt/watchlistedAt)', debug=ui_settings.debug)
         elif not hasattr(self, 'watchlistedAt') or not self.watchlistedAt:
             _fallback = getattr(self, 'addedAt', None) or 0
             if _fallback and getattr(self, 'originallyAvailableAt', None):
