@@ -238,24 +238,27 @@ def settings():
             load(doprint=True)
             back = True
 
-def repair_broken_media():
-    ui_cls('Options/Repair Broken Media/')
+def repair_broken_media(non_interactive=False):
+    if not non_interactive:
+        ui_cls('Options/Repair Broken Media/')
     import content.services.plex as plex
     import debrid.services.realdebrid as realdebrid
     import time
     
     if not plex.users:
         print("Error: No Plex users configured.")
-        print()
-        print('Press Enter to return to the main menu.')
-        input()
+        if not non_interactive:
+            print()
+            print('Press Enter to return to the main menu.')
+            input()
         return
     
     if not hasattr(plex.library, 'url') or not plex.library.url:
         print("Error: Plex library URL not configured.")
-        print()
-        print('Press Enter to return to the main menu.')
-        input()
+        if not non_interactive:
+            print()
+            print('Press Enter to return to the main menu.')
+            input()
         return
     
     print('Querying Plex for broken media...')
@@ -270,9 +273,10 @@ def repair_broken_media():
         
         if not response or not hasattr(response, 'MediaContainer') or not hasattr(response.MediaContainer, 'Directory'):
             print("Error: Could not retrieve library sections from Plex.")
-            print()
-            print('Press Enter to return to the main menu.')
-            input()
+            if not non_interactive:
+                print()
+                print('Press Enter to return to the main menu.')
+                input()
             return
         
         sections = []
@@ -283,9 +287,10 @@ def repair_broken_media():
         
         if not sections:
             print("No library sections found.")
-            print()
-            print('Press Enter to return to the main menu.')
-            input()
+            if not non_interactive:
+                print()
+                print('Press Enter to return to the main menu.')
+                input()
             return
         
         # Query each section for broken media (trash=1)
@@ -500,8 +505,9 @@ def repair_broken_media():
         print(f"Error: {str(e)}")
         print()
     
-    print('Press Enter to return to the main menu.')
-    input()
+    if not non_interactive:
+        print('Press Enter to return to the main menu.')
+        input()
 
 def options():
     current_module = sys.modules[__name__]
@@ -965,6 +971,9 @@ def threaded(stop):
 
             # Auto-cleanup: remove released films and ended shows from Plex watchlist after threshold days
             cleanup_watchlist_items(plex_watchlist, library)
+            if str(getattr(ui_settings, 'auto_repair_broken_media_after_cleanup', 'false')).lower() == 'true':
+                ui_print('running non-interactive repair broken media ...')
+                repair_broken_media(non_interactive=True)
             
             # Update database with current collected status for entire library
             ui_print('updating database status ...')
