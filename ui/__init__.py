@@ -783,8 +783,9 @@ def cleanup_watchlist_items(plex_watchlist, library):
                     content.services.trakt.current_user = content.services.trakt.users[0]
                     item.match('content.services.trakt')
                 if item.available():
+                    in_library = item.collected(library) if hasattr(item, 'collected') and library else False
                     items_to_remove.append(item)
-                    ui_print(f'[plex cleanup] will remove movie "{_item_label(item)}" ({getattr(item, "year", "")}) (released, {days_in_watchlist}d in list)', debug=ui_settings.debug)
+                    ui_print(f'[plex cleanup] will remove movie "{_item_label(item)}" ({getattr(item, "year", "")}) (released, in_library={in_library}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
                 else:
                     ui_print(f'[plex cleanup] skip movie "{_item_label(item)}": not available (released)', debug=ui_settings.debug)
             except Exception as e:
@@ -796,7 +797,7 @@ def cleanup_watchlist_items(plex_watchlist, library):
                 # Remove if ended (from Plex/Trakt metadata) OR fully collected (all episodes in library)
                 if has_ended or is_collected:
                     items_to_remove.append(item)
-                    ui_print(f'[plex cleanup] will remove show "{_item_label(item)}" ({getattr(item, "year", "")}) (hasended={has_ended}, collected={is_collected}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
+                    ui_print(f'[plex cleanup] will remove show "{_item_label(item)}" ({getattr(item, "year", "")}) (status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}, hasended={has_ended}, collected={is_collected}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
                 else:
                     ui_print(f'[plex cleanup] skip show "{_item_label(item)}": hasended={has_ended} (status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}), collected={is_collected}', debug=ui_settings.debug)
             except Exception as e:
