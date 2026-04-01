@@ -440,6 +440,8 @@ settings_list = [
         setting('Watchlist loop interval (sec)', 'Please enter an integer value in seconds: ', ui_settings, 'loop_interval_seconds'),
         setting('Watchlist cleanup threshold (days)', 'Please enter number of days (e.g. 30, 0 to disable): ', ui_settings, 'watchlist_cleanup_days',
                 help='Remove films (released in digital/physical) and ended shows from Plex watchlist after this many days. Default 30, use 0 to disable.'),
+        setting('Watchlist date stale threshold (days)', 'Please enter number of days (e.g. 1095): ', ui_settings, 'watchlist_date_stale_days',
+                help='If Plex watchlist date is older than this and listing data has no better date, try the activity feed before treating the cached/metadata date as stale. Default 1095 (3 years).'),
         setting('Auto run repair broken media after cleanup', 'Please enter "true" or "false": ', ui_settings, 'auto_repair_broken_media_after_cleanup',
                 help='Run a non-interactive repair of broken media immediately after watchlist cleanup during full runs. Default false.'),
         setting('version', 'No snooping around! :D This is for compatability reasons.', ui_settings, 'version',
