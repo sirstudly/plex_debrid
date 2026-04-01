@@ -756,6 +756,29 @@ def cleanup_watchlist_items(plex_watchlist, library):
         except Exception:
             return getattr(it, 'ratingKey', 'unknown') or 'unknown'
 
+    def _parse_watchlisted_dt(value):
+        if isinstance(value, (int, float)):
+            return datetime.datetime.utcfromtimestamp(float(value))
+        if isinstance(value, str):
+            try:
+                return datetime.datetime.strptime(value[:10], '%Y-%m-%d')
+            except ValueError:
+                return datetime.datetime.fromtimestamp(
+                    content.services.plex._normalize_watchlisted_at(value),
+                    tz=datetime.timezone.utc,
+                ).replace(tzinfo=None)
+        return None
+
+    def _get_item_plex_token(it):
+        user_attr = getattr(it, 'user', None)
+        if isinstance(user_attr, list) and len(user_attr) > 0:
+            if isinstance(user_attr[0], list) and len(user_attr[0]) > 1:
+                return user_attr[0][1]
+            if len(user_attr) > 1 and isinstance(user_attr[1], str):
+                return user_attr[1]
+        users = getattr(content.services.plex, 'users', [])
+        return users[0][1] if users else None
+
     for item in list(plex_watchlist.data):
         if not hasattr(item, 'watchlist') or item.watchlist != plex_service:
             continue
@@ -766,19 +789,29 @@ def cleanup_watchlist_items(plex_watchlist, library):
             ui_print(f'[plex cleanup] skip "{_item_label(item)}": no watchlistedAt', debug=ui_settings.debug)
             continue
         try:
-            if isinstance(watchlisted_at, (int, float)):
-                added_dt = datetime.datetime.utcfromtimestamp(float(watchlisted_at))
-            elif isinstance(watchlisted_at, str):
-                added_dt = datetime.datetime.strptime(watchlisted_at[:10], '%Y-%m-%d')
-            else:
+            added_dt = _parse_watchlisted_dt(watchlisted_at)
+            if added_dt is None:
                 continue
-        except (ValueError, OSError):
+        except (ValueError, OSError, TypeError):
             ui_print(f'[plex cleanup] skip "{_item_label(item)}": invalid watchlistedAt', debug=ui_settings.debug)
             continue
-        # Do not remove when add date is unreasonably old (likely release date used by mistake)
-        if (now - added_dt).days > 365 * 15:
-            ui_print(f'[plex cleanup] skip "{_item_label(item)}": watchlist date too old (likely wrong)', debug=ui_settings.debug)
-            continue
+        stale_days = content.services.plex._watchlist_date_stale_days()
+        if (now - added_dt).days > stale_days:
+            token = _get_item_plex_token(item)
+            refreshed = None
+            if token and getattr(item, 'ratingKey', None):
+                refreshed = content.services.plex.get_watchlist_activity_added_at(item.ratingKey, token)
+            if refreshed is not None:
+                item.watchlistedAt = refreshed
+                try:
+                    added_dt = datetime.datetime.utcfromtimestamp(float(refreshed))
+                    ui_print(f'[plex cleanup] refreshed "{_item_label(item)}" watchlist date from activity feed', debug=ui_settings.debug)
+                except (ValueError, OSError, TypeError):
+                    ui_print(f'[plex cleanup] skip "{_item_label(item)}": invalid activity-feed watchlist date', debug=ui_settings.debug)
+                    continue
+            if (now - added_dt).days > stale_days:
+                ui_print(f'[plex cleanup] skip "{_item_label(item)}": watchlist date too old (>{stale_days}d, likely wrong)', debug=ui_settings.debug)
+                continue
         days_in_watchlist = (now - added_dt).days
         if days_in_watchlist < threshold:
             continue
