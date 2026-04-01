@@ -246,23 +246,23 @@ def repair_broken_media(non_interactive=False):
     import time
     
     if not plex.users:
-        print("Error: No Plex users configured.")
+        ui_print("Error: No Plex users configured.")
         if not non_interactive:
-            print()
-            print('Press Enter to return to the main menu.')
+            ui_print("")
+            ui_print('Press Enter to return to the main menu.')
             input()
         return
     
     if not hasattr(plex.library, 'url') or not plex.library.url:
-        print("Error: Plex library URL not configured.")
+        ui_print("Error: Plex library URL not configured.")
         if not non_interactive:
-            print()
-            print('Press Enter to return to the main menu.')
+            ui_print("")
+            ui_print('Press Enter to return to the main menu.')
             input()
         return
     
-    print('Querying Plex for broken media...')
-    print()
+    ui_print('Querying Plex for broken media...')
+    ui_print("")
     
     broken_items = []
     
@@ -272,10 +272,10 @@ def repair_broken_media(non_interactive=False):
         response = plex.get(plex.session, url)
         
         if not response or not hasattr(response, 'MediaContainer') or not hasattr(response.MediaContainer, 'Directory'):
-            print("Error: Could not retrieve library sections from Plex.")
+            ui_print("Error: Could not retrieve library sections from Plex.")
             if not non_interactive:
-                print()
-                print('Press Enter to return to the main menu.')
+                ui_print("")
+                ui_print('Press Enter to return to the main menu.')
                 input()
             return
         
@@ -286,10 +286,10 @@ def repair_broken_media(non_interactive=False):
                 sections.append((Directory.key, types, Directory.title))
         
         if not sections:
-            print("No library sections found.")
+            ui_print("No library sections found.")
             if not non_interactive:
-                print()
-                print('Press Enter to return to the main menu.')
+                ui_print("")
+                ui_print('Press Enter to return to the main menu.')
                 input()
             return
         
@@ -329,36 +329,36 @@ def repair_broken_media(non_interactive=False):
                             broken_items.append((name, "No filename available"))
         
         # Fetch Real-Debrid torrents and sync file cache
-        print('Querying Real-Debrid for torrents...')
-        print()
+        ui_print('Querying Real-Debrid for torrents...')
+        ui_print("")
         rd_torrents = []
         
         if not realdebrid.api_key:
-            print("Warning: Real-Debrid API key not configured. Skipping Real-Debrid matching.")
-            print()
+            ui_print("Warning: Real-Debrid API key not configured. Skipping Real-Debrid matching.")
+            ui_print("")
         else:
             try:
                 # Sync torrents database first to ensure we have up-to-date torrent data
-                print('Syncing Real-Debrid torrents cache...')
-                print()
+                ui_print('Syncing Real-Debrid torrents cache...')
+                ui_print("")
                 rd_torrents = realdebrid.cache.sync_torrents()
                 
                 if rd_torrents is None:
-                    print("Error: Failed to sync Real-Debrid torrents.")
-                    print()
+                    ui_print("Error: Failed to sync Real-Debrid torrents.")
+                    ui_print("")
                 else:
-                    print(f"Found {len(rd_torrents)} Real-Debrid torrent(s).")
-                    print()
+                    ui_print(f"Found {len(rd_torrents)} Real-Debrid torrent(s).")
+                    ui_print("")
                     
                     # Sync torrent files cache to ensure we have file data for matching
                     # This uses the database torrent cache which is now up-to-date
-                    print('Syncing Real-Debrid torrent files cache...')
-                    print()
+                    ui_print('Syncing Real-Debrid torrent files cache...')
+                    ui_print("")
                     realdebrid.cache.sync_torrent_files()
-                    print()
+                    ui_print("")
             except Exception as e:
-                print(f"Error querying Real-Debrid: {str(e)}")
-                print()
+                ui_print(f"Error querying Real-Debrid: {str(e)}")
+                ui_print("")
         
         # Track matched Real-Debrid IDs and hashes
         # Structure: hash -> list of (id, name, filename) tuples
@@ -366,48 +366,48 @@ def repair_broken_media(non_interactive=False):
         
         # Display results with Real-Debrid matching
         if broken_items:
-            print(f"Found {len(broken_items)} broken media item(s):")
-            print()
+            ui_print(f"Found {len(broken_items)} broken media item(s):")
+            ui_print("")
             for name, filename in broken_items:
-                print(f"Name: {name}")
-                print(f"Filename: {filename}")
+                ui_print(f"Name: {name}")
+                ui_print(f"Filename: {filename}")
                 
                 # Use cache.match_broken_media() for matching
                 rd_match, rd_hash, verified = realdebrid.cache.match_broken_media(filename, rd_torrents)
                 
                 if rd_match:
-                    print(f"Real-Debrid ID: {rd_match}")
+                    ui_print(f"Real-Debrid ID: {rd_match}")
                     if rd_hash:
-                        print(f"Real-Debrid Hash: {rd_hash}")
+                        ui_print(f"Real-Debrid Hash: {rd_hash}")
                         if verified:
-                            print("  ✓ Verified: Match confirmed by checking cached torrent files")
+                            ui_print("  Verified: Match confirmed by checking cached torrent files")
                             # Track by hash - multiple items can share the same hash
                             if rd_hash not in matched_by_hash:
                                 matched_by_hash[rd_hash] = []
                             matched_by_hash[rd_hash].append((rd_match, name, filename))
                         else:
-                            print("  ✗ Verification failed: Skipping (filename mismatch in cached torrent files)")
+                            ui_print("  Verification failed: Skipping (filename mismatch in cached torrent files)")
                     else:
-                        print("Real-Debrid Hash: Not available")
+                        ui_print("Real-Debrid Hash: Not available")
                 else:
-                    print("Real-Debrid match not found.")
-                print()
+                    ui_print("Real-Debrid match not found.")
+                ui_print("")
         else:
-            print("No broken media found.")
-            print()
+            ui_print("No broken media found.")
+            ui_print("")
         
         # Repair: Delete and re-add matched torrents (one hash at a time)
         if matched_by_hash and realdebrid.api_key:
-            print()
-            print(f"Repairing {len(matched_by_hash)} unique hash(es)...")
-            print()
+            ui_print("")
+            ui_print(f"Repairing {len(matched_by_hash)} unique hash(es)...")
+            ui_print("")
             
             added_count = 0
             failed_count = 0
             
             for hash_value, items in matched_by_hash.items():
-                print(f"Processing hash: {hash_value}")
-                print(f"  Found {len(items)} matched item(s) with this hash")
+                ui_print(f"Processing hash: {hash_value}")
+                ui_print(f"  Found {len(items)} matched item(s) with this hash")
                 
                 # Delete all existing Real-Debrid items with this hash
                 # Deduplicate torrent IDs since multiple items may point to the same torrent
@@ -422,19 +422,19 @@ def repair_broken_media(non_interactive=False):
                     try:
                         realdebrid.delete(f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}')
                         deleted_count += 1
-                        print(f"  Deleted Real-Debrid torrent ID: {torrent_id} (Name: {name})")
+                        ui_print(f"  Deleted Real-Debrid torrent ID: {torrent_id} (Name: {name})")
                         time.sleep(1.0)  # Rate limiting (DELETE not rate-limited by session, so manual delay)
                     except Exception as e:
                         # Check if error is because torrent was already deleted
                         error_msg = str(e)
                         if '404' in error_msg or 'unknown_ressource' in error_msg or 'invalid id' in error_msg.lower():
-                            print(f"  Torrent ID {torrent_id} already deleted (skipping)")
+                            ui_print(f"  Torrent ID {torrent_id} already deleted (skipping)")
                             deleted_count += 1  # Count as success since it's already gone
                         else:
-                            print(f"  Error deleting torrent {torrent_id}: {str(e)}")
+                            ui_print(f"  Error deleting torrent {torrent_id}: {str(e)}")
                 
-                print(f"  Deleted {deleted_count} unique torrent(s) with hash {hash_value}")
-                print()
+                ui_print(f"  Deleted {deleted_count} unique torrent(s) with hash {hash_value}")
+                ui_print("")
                 
                 # Re-add the hash
                 try:
@@ -445,13 +445,13 @@ def repair_broken_media(non_interactive=False):
                     response = realdebrid.post('https://api.real-debrid.com/rest/1.0/torrents/addMagnet', {'magnet': magnet_link})
                     
                     if hasattr(response, 'error'):
-                        print(f"  Error adding hash {hash_value}: {response.error}")
+                        ui_print(f"  Error adding hash {hash_value}: {response.error}")
                         failed_count += 1
                     elif hasattr(response, 'id'):
                         torrent_id = str(response.id)
                         # Use the first name from the items list for display
                         _, name, fname = items[0]
-                        print(f"  Re-added torrent (Hash: {hash_value}, Name: {name}, Filename: {fname}) - New ID: {torrent_id}")
+                        ui_print(f"  Re-added torrent (Hash: {hash_value}, Name: {name}, Filename: {fname}) - New ID: {torrent_id}")
                         
                         # Wait for magnet conversion
                         time.sleep(1.0)
@@ -460,7 +460,7 @@ def repair_broken_media(non_interactive=False):
                         torrent_info = realdebrid.get(f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}')
                         
                         if torrent_info and hasattr(torrent_info, 'status') and torrent_info.status == 'magnet_error':
-                            print(f"  Error: Magnet conversion failed for hash {hash_value}")
+                            ui_print(f"  Error: Magnet conversion failed for hash {hash_value}")
                             realdebrid.delete(f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}')
                             failed_count += 1
                         elif torrent_info and hasattr(torrent_info, 'files') and len(torrent_info.files) > 0:
@@ -479,34 +479,34 @@ def repair_broken_media(non_interactive=False):
                                     f'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{torrent_id}',
                                     {'files': ",".join(media_file_ids)}
                                 )
-                                print(f"  Selected {len(media_file_ids)} media file(s)")
+                                ui_print(f"  Selected {len(media_file_ids)} media file(s)")
                             else:
-                                print(f"  Warning: No media files found in torrent")
+                                ui_print(f"  Warning: No media files found in torrent")
                         else:
-                            print(f"  Warning: No files found in torrent or torrent info unavailable")
+                            ui_print(f"  Warning: No files found in torrent or torrent info unavailable")
                         
                         added_count += 1
                     else:
-                        print(f"  Unexpected response when adding hash {hash_value}")
+                        ui_print(f"  Unexpected response when adding hash {hash_value}")
                         failed_count += 1
                     
                     time.sleep(1.0)  # Rate limiting
                 except Exception as e:
-                    print(f"  Error re-adding hash {hash_value}: {str(e)}")
+                    ui_print(f"  Error re-adding hash {hash_value}: {str(e)}")
                     failed_count += 1
                 
-                print()  # Blank line between hash processing
+                ui_print("")  # Blank line between hash processing
             
-            print()
-            print(f"Repair complete: {added_count} torrent(s) re-added, {failed_count} failed.")
-            print()
+            ui_print("")
+            ui_print(f"Repair complete: {added_count} torrent(s) re-added, {failed_count} failed.")
+            ui_print("")
         
     except Exception as e:
-        print(f"Error: {str(e)}")
-        print()
+        ui_print(f"Error: {str(e)}")
+        ui_print("")
     
     if not non_interactive:
-        print('Press Enter to return to the main menu.')
+        ui_print('Press Enter to return to the main menu.')
         input()
 
 def options():
