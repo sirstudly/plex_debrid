@@ -692,6 +692,8 @@ class season(classes.media):
     def __init__(self, other):
         self.watchlist = watchlist
         self.__dict__.update(other.__dict__)
+        # Trakt metadata may include `released`; it shadows media.released() if copied onto the instance.
+        self.__dict__.pop('released', None)
         self.EID = setEID(self)
         self.Episodes = []
         if hasattr(self, 'ids.trakt'):
@@ -726,6 +728,7 @@ class episode(classes.media):
     def __init__(self, other):
         self.watchlist = watchlist
         self.__dict__.update(other.__dict__)
+        self.__dict__.pop('released', None)
         self.EID = setEID(self)
         if hasattr(self, 'ids.trakt'):
             self.guid = self.ids.trakt
@@ -750,6 +753,7 @@ class show(classes.media):
     def __init__(self, other):
         self.watchlist = watchlist
         self.__dict__.update(other.__dict__)
+        self.__dict__.pop('released', None)
         self.Seasons = []
         self.guid = self.ids.trakt
         self.EID = setEID(self)
