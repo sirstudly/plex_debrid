@@ -739,6 +739,7 @@ def cleanup_watchlist_items(plex_watchlist, library):
         threshold = int(getattr(ui_settings, 'watchlist_cleanup_days', 30))
     except (TypeError, ValueError):
         threshold = 30
+    dry_run = str(getattr(ui_settings, 'watchlist_cleanup_dry_run', 'false')).lower() == 'true'
     if threshold <= 0:
         ui_print('[plex cleanup] disabled (threshold <= 0)', debug=ui_settings.debug)
         return
@@ -845,7 +846,7 @@ def cleanup_watchlist_items(plex_watchlist, library):
                     item.match('content.services.trakt')
                 if item.available():
                     in_library = item.collected(library) if hasattr(item, 'collected') and library else False
-                    items_to_remove.append(item)
+                    items_to_remove.append((item, 'movie_released'))
                     ui_print(f'[plex cleanup] will remove movie "{_item_label(item)}" ({getattr(item, "year", "")}) (released, in_library={in_library}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
                 else:
                     ui_print(f'[plex cleanup] skip movie "{_item_label(item)}": not available (released)', debug=ui_settings.debug)
@@ -855,20 +856,36 @@ def cleanup_watchlist_items(plex_watchlist, library):
             try:
                 has_ended = item.hasended()
                 is_collected = item.collected(library) if hasattr(item, 'collected') and library else False
-                # Remove if ended (from Plex/Trakt metadata) OR fully collected (all episodes in library)
-                if has_ended or is_collected:
-                    items_to_remove.append(item)
-                    ui_print(f'[plex cleanup] will remove show "{_item_label(item)}" ({getattr(item, "year", "")}) (status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}, hasended={has_ended}, collected={is_collected}, {days_in_watchlist}d in list)', debug=ui_settings.debug)
+                inactivity_days = sqlite_store.get_show_inactivity_days(item)
+                no_progress_too_long = inactivity_days is not None and inactivity_days >= threshold
+                # Remove if show ended AND fully collected, OR if no collection progress for threshold days.
+                if (has_ended and is_collected) or no_progress_too_long:
+                    reason = 'show_ended_and_collected' if (has_ended and is_collected) else f'show_no_progress_{inactivity_days}d'
+                    items_to_remove.append((item, reason))
+                    ui_print(
+                        f'[plex cleanup] will remove show "{_item_label(item)}" ({getattr(item, "year", "")}) '
+                        f'(status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}, '
+                        f'hasended={has_ended}, collected={is_collected}, inactivity_days={inactivity_days}, {days_in_watchlist}d in list)',
+                        debug=ui_settings.debug
+                    )
                 else:
-                    ui_print(f'[plex cleanup] skip show "{_item_label(item)}": hasended={has_ended} (status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}), collected={is_collected}', debug=ui_settings.debug)
+                    ui_print(
+                        f'[plex cleanup] skip show "{_item_label(item)}": hasended={has_ended} '
+                        f'(status={getattr(item, "status", "?")}, isContinuingSeries={getattr(item, "isContinuingSeries", "?")}), '
+                        f'collected={is_collected}, inactivity_days={inactivity_days}',
+                        debug=ui_settings.debug
+                    )
             except Exception as e:
                 ui_print(f'[plex cleanup] skip show "{_item_label(item)}": {e}', debug=ui_settings.debug)
-    ui_print(f'[plex cleanup] run: threshold={threshold}d, {len(plex_watchlist.data)} Plex items, {considered} eligible (>={threshold}d), removing {len(items_to_remove)}')
+    ui_print(f'[plex cleanup] run: threshold={threshold}d, dry_run={dry_run}, {len(plex_watchlist.data)} Plex items, {considered} eligible (>={threshold}d), removing {len(items_to_remove)}')
     ui_print(f'[plex cleanup] considered {considered} items (>={threshold}d), removing {len(items_to_remove)}', debug=ui_settings.debug)
-    for item in items_to_remove:
+    for item, reason in items_to_remove:
         try:
+            if dry_run:
+                ui_print(f'[plex cleanup] dry-run: would remove "{_item_label(item)}" ({getattr(item, "year", "")}) from watchlist (reason={reason}, >={threshold}d in list)')
+                continue
             plex_watchlist.remove(item)
-            ui_print(f'[plex cleanup] removed "{_item_label(item)}" ({getattr(item, "year", "")}) from watchlist (released/ended, >{threshold}d in list)')
+            ui_print(f'[plex cleanup] removed "{_item_label(item)}" ({getattr(item, "year", "")}) from watchlist (reason={reason}, >={threshold}d in list)')
             # Clear ignore flag so re-adding later gets a fresh download attempt (may be available now)
             try:
                 if hasattr(item, 'unwatch'):
@@ -896,6 +913,17 @@ def threaded(stop):
     timeout = 5
     regular_check = int(ui_settings.loop_interval_seconds)
     last_full_run_start = 0  # 0 so first full run can start when condition is first checked
+    try:
+        cleanup_threshold = int(getattr(ui_settings, 'watchlist_cleanup_days', 30))
+    except (TypeError, ValueError):
+        cleanup_threshold = 30
+    cleanup_dry_run = str(getattr(ui_settings, 'watchlist_cleanup_dry_run', 'false')).lower() == 'true'
+    stale_days = content.services.plex._watchlist_date_stale_days()
+    first_seen_days = content.services.plex._watchlist_first_seen_activity_check_days()
+    ui_print(
+        f'[startup] cleanup settings: threshold_days={cleanup_threshold}, dry_run={cleanup_dry_run}, '
+        f'stale_days={stale_days}, first_seen_activity_check_days={first_seen_days}'
+    )
     library = content.classes.library()[0]()
     # refresh Real-Debrid cache on startup
     if debrid.services.realdebrid.cache.should_refresh():

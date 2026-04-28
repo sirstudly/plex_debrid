@@ -4,6 +4,7 @@ debug = "false"
 log = "false"
 loop_interval_seconds = 1800
 watchlist_cleanup_days = 30
+watchlist_cleanup_dry_run = "false"
 auto_repair_broken_media_after_cleanup = "false"
 watchlist_date_stale_days = 1095
 watchlist_first_seen_activity_check_days = 30

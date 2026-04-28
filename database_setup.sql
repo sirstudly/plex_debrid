@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS media_show (
     guid TEXT PRIMARY KEY,
     leaf_count INTEGER,
     child_count INTEGER,
+    collected_episode_count INTEGER DEFAULT 0,
+    last_collection_progress_at TEXT,
     title TEXT,
     year INTEGER,
     public_pages_url TEXT,

@@ -45,6 +45,15 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
         with open(setup_script_path, 'r') as f:
             setup_script = f.read()
         _connection.executescript(setup_script)
+        # Lightweight schema migration for older databases
+        try:
+            cols = [r[1] for r in _connection.execute("PRAGMA table_info(media_show)").fetchall()]
+            if "collected_episode_count" not in cols:
+                _connection.execute("ALTER TABLE media_show ADD COLUMN collected_episode_count INTEGER DEFAULT 0")
+            if "last_collection_progress_at" not in cols:
+                _connection.execute("ALTER TABLE media_show ADD COLUMN last_collection_progress_at TEXT")
+        except Exception:
+            pass
         _connection.commit()
 
         _db_path = db_file
@@ -89,6 +98,34 @@ def _compute_key_guid(media_obj) -> Optional[str]:
     if getattr(media_obj, "key", None):
         return media_obj.key
     return None
+
+
+def _count_collected_episodes(media_obj, library_list) -> int:
+    """Best-effort collected-episode count for a show media object."""
+    try:
+        leaf_count = int(getattr(media_obj, "leafCount", 0) or 0)
+    except Exception:
+        leaf_count = 0
+    try:
+        if callable(getattr(media_obj, "uncollected", None)):
+            uncollected = media_obj.uncollected(library_list)
+            if isinstance(uncollected, list):
+                return max(0, leaf_count - len(uncollected))
+    except Exception:
+        pass
+    # Fallback: explicit episode checks if available
+    count = 0
+    try:
+        for season in getattr(media_obj, "Seasons", []) or []:
+            for episode in getattr(season, "Episodes", []) or []:
+                try:
+                    if callable(getattr(episode, "collected", None)) and episode.collected(library_list):
+                        count += 1
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return count
 
 
 def upsert_release(media_obj, release, downloaded: bool = False) -> None:
@@ -390,14 +427,35 @@ def update_db(media_obj, library_list, source=None) -> None:
                 ),
             )
         elif media_type == 'show':
+            collected_episode_count = _count_collected_episodes(media_obj, library_list)
+            now_iso = datetime.datetime.utcnow().isoformat()
+            prev_count = None
+            prev_progress_at = None
+            try:
+                row = conn.execute(
+                    "SELECT collected_episode_count, last_collection_progress_at FROM media_show WHERE guid = ?",
+                    (key_guid,),
+                ).fetchone()
+                if row:
+                    prev_count, prev_progress_at = row[0], row[1]
+            except Exception:
+                pass
+            if prev_count is None:
+                progress_at = now_iso
+            elif collected_episode_count > int(prev_count or 0):
+                progress_at = now_iso
+            else:
+                progress_at = prev_progress_at or now_iso
             conn.execute(
                 """
                 INSERT INTO media_show (
-                    guid, leaf_count, child_count, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by, source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    guid, leaf_count, child_count, collected_episode_count, last_collection_progress_at, title, year, watchlisted_at, public_pages_url, imdb, tmdb, tvdb, released, collected, watched, ignored, watchlisted_by, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guid) DO UPDATE SET
                     leaf_count=excluded.leaf_count,
                     child_count=excluded.child_count,
+                    collected_episode_count=excluded.collected_episode_count,
+                    last_collection_progress_at=excluded.last_collection_progress_at,
                     title=excluded.title,
                     year=excluded.year,
                     watchlisted_at=excluded.watchlisted_at,
@@ -417,6 +475,8 @@ def update_db(media_obj, library_list, source=None) -> None:
                     key_guid,
                     getattr(media_obj, 'leafCount', None),
                     getattr(media_obj, 'childCount', None),
+                    collected_episode_count,
+                    progress_at,
                     None if title is None else str(title),
                     None if year is None else int(year),
                     _convert_watchlisted_at(media_obj),
@@ -515,4 +575,34 @@ def update_db(media_obj, library_list, source=None) -> None:
     except Exception as e:
         # Log via ui_print if available; otherwise ignore
         print("[sqlite] error: couldnt update database: " + str(e))
+
+
+def get_show_inactivity_days(media_obj) -> Optional[int]:
+    """Return days since last collection progress for a show, or None if unknown."""
+    try:
+        if getattr(media_obj, "type", None) != "show":
+            return None
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return None
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT last_collection_progress_at FROM media_show WHERE guid = ?",
+            (key_guid,),
+        ).fetchone()
+        if not row or not row[0]:
+            return None
+        s = str(row[0])
+        dt = None
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                dt = datetime.datetime.strptime(s.split("+")[0].split("Z")[0], fmt)
+                break
+            except Exception:
+                continue
+        if dt is None:
+            return None
+        return max(0, (datetime.datetime.utcnow() - dt).days)
+    except Exception:
+        return None
 
