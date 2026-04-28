@@ -83,6 +83,26 @@ def _normalize_watchlisted_at(value):
     return None
 
 
+def _format_watchlist_date_debug_value(value):
+    """Return debug-friendly watchlist date with human-readable UTC if possible."""
+    ts = _normalize_watchlisted_at(value)
+    if ts is None:
+        return value
+    try:
+        human = datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
+        return f"{value} ({human})"
+    except Exception:
+        return value
+
+
+def _format_watchlist_date_debug_map(values: dict):
+    """Format date-related debug map with human-readable timestamps where possible."""
+    out = {}
+    for k, v in values.items():
+        out[k] = _format_watchlist_date_debug_value(v)
+    return out
+
+
 def _watchlist_date_stale_days():
     """Get stale watchlist-date threshold from settings, defaulting to 3 years."""
     try:
@@ -460,6 +480,7 @@ class show(classes.media):
             _from_listing_entry = True
             _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
             _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
+            _entry_vals = _format_watchlist_date_debug_map(_entry_vals)
             ui_print(f'[plex watchlist date] show entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
@@ -576,6 +597,7 @@ class movie(classes.media):
             _from_listing_entry = True
             _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
             _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
+            _entry_vals = _format_watchlist_date_debug_map(_entry_vals)
             ui_print(f'[plex watchlist date] movie entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
             self.__dict__.update(ratingKey.__dict__)
             ratingKey = ratingKey.ratingKey
