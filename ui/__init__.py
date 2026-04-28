@@ -815,6 +815,28 @@ def cleanup_watchlist_items(plex_watchlist, library):
         days_in_watchlist = (now - added_dt).days
         if days_in_watchlist < threshold:
             continue
+        # Least-intrusive safeguard: before removal decisions, re-check watchlist date from activity feed.
+        token = _get_item_plex_token(item)
+        if token and getattr(item, 'ratingKey', None):
+            refreshed = content.services.plex.get_watchlist_activity_added_at(item.ratingKey, token)
+            if refreshed is not None:
+                current_ts = content.services.plex._normalize_watchlisted_at(watchlisted_at)
+                if refreshed != current_ts:
+                    item.watchlistedAt = refreshed
+                    try:
+                        added_dt = datetime.datetime.utcfromtimestamp(float(refreshed))
+                        days_in_watchlist = (now - added_dt).days
+                        ui_print(
+                            f'[plex cleanup] refreshed "{_item_label(item)}" watchlist date before removal: '
+                            f'{current_ts} -> {refreshed} ({days_in_watchlist}d in list)',
+                            debug=ui_settings.debug
+                        )
+                    except (ValueError, OSError, TypeError):
+                        ui_print(f'[plex cleanup] skip "{_item_label(item)}": invalid pre-removal activity-feed date', debug=ui_settings.debug)
+                        continue
+                    if days_in_watchlist < threshold:
+                        ui_print(f'[plex cleanup] skip "{_item_label(item)}": refreshed watchlist date now below threshold ({days_in_watchlist}d < {threshold}d)', debug=ui_settings.debug)
+                        continue
         considered += 1
         if item.type == 'movie':
             try:
