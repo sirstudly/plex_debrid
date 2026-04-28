@@ -92,6 +92,15 @@ def _watchlist_date_stale_days():
         return 1095
 
 
+def _watchlist_first_seen_activity_check_days():
+    """Get first-seen immediate activity-check threshold, defaulting to 30 days."""
+    try:
+        value = int(getattr(ui_settings, "watchlist_first_seen_activity_check_days", 30))
+        return value if value > 0 else 30
+    except Exception:
+        return 30
+
+
 def get_watchlist_activity_added_at(metadata_id: str, token: str):
     """
     Query Plex community activity feed and return first ActivityWatchlist date
@@ -445,8 +454,10 @@ class show(classes.media):
         # Initialize Seasons to ensure it always exists
         self.Seasons = []
         _watchlist_added_at = None
+        _from_listing_entry = False
         if not isinstance(ratingKey, str):
             _watchlist_added_at = _normalize_watchlisted_at(getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None))
+            _from_listing_entry = True
             _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
             _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
             ui_print(f'[plex watchlist date] show entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
@@ -464,6 +475,21 @@ class show(classes.media):
             for user in users:
                 if library.ignore.user == user[0]:
                     token = user[1]
+        if _from_listing_entry and _watchlist_added_at is not None:
+            try:
+                check_days = _watchlist_first_seen_activity_check_days()
+                if (datetime.datetime.utcnow() - datetime.datetime.utcfromtimestamp(_watchlist_added_at)).days > check_days:
+                    refreshed = get_watchlist_activity_added_at(ratingKey, token)
+                    if refreshed is not None and refreshed != _watchlist_added_at:
+                        ui_print(
+                            f'[plex watchlist date] show "{getattr(self, "title", "?")}": '
+                            f'listing date {_watchlist_added_at} looked too old for first-seen item; '
+                            f'using activity date {refreshed}',
+                            debug=ui_settings.debug
+                        )
+                        _watchlist_added_at = refreshed
+            except Exception:
+                pass
         if _watchlist_added_at is None:
             _watchlist_added_at = get_watchlist_activity_added_at(ratingKey, token)
         url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
@@ -544,8 +570,10 @@ class movie(classes.media):
                 if library.ignore.user == user[0]:
                     token = user[1]
         _watchlist_added_at = None
+        _from_listing_entry = False
         if not isinstance(ratingKey, str):
             _watchlist_added_at = _normalize_watchlisted_at(getattr(ratingKey, 'addedAt', None) or getattr(ratingKey, 'watchlistedAt', None))
+            _from_listing_entry = True
             _entry_keys = [k for k in dir(ratingKey) if not k.startswith('_') and ('add' in k.lower() or 'date' in k.lower() or 'watch' in k.lower() or 'list' in k.lower())]
             _entry_vals = {k: getattr(ratingKey, k, None) for k in _entry_keys}
             ui_print(f'[plex watchlist date] movie entry keys (date-related): {_entry_vals}', debug=ui_settings.debug)
@@ -553,6 +581,21 @@ class movie(classes.media):
             ratingKey = ratingKey.ratingKey
         elif ratingKey.startswith('plex://'):
             ratingKey = ratingKey.split('/')[-1]
+        if _from_listing_entry and _watchlist_added_at is not None:
+            try:
+                check_days = _watchlist_first_seen_activity_check_days()
+                if (datetime.datetime.utcnow() - datetime.datetime.utcfromtimestamp(_watchlist_added_at)).days > check_days:
+                    refreshed = get_watchlist_activity_added_at(ratingKey, token)
+                    if refreshed is not None and refreshed != _watchlist_added_at:
+                        ui_print(
+                            f'[plex watchlist date] movie "{getattr(self, "title", "?")}": '
+                            f'listing date {_watchlist_added_at} looked too old for first-seen item; '
+                            f'using activity date {refreshed}',
+                            debug=ui_settings.debug
+                        )
+                        _watchlist_added_at = refreshed
+            except Exception:
+                pass
         if _watchlist_added_at is None:
             _watchlist_added_at = get_watchlist_activity_added_at(ratingKey, token)
         url = 'https://discover.provider.plex.tv/library/metadata/' + ratingKey + '?includeUserState=1&X-Plex-Token=' + token
