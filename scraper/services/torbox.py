@@ -2,7 +2,6 @@ from ui.ui_print import *
 import releases
 from functools import lru_cache
 import time
-import urllib.parse
 
 name = "torbox"
 timeout_sec = 30
@@ -60,9 +59,6 @@ def scrape(query, altquery):
     # we need the imdb id when searching torrents on torbox
     imdb_ids = (imdb_lookup(query) if not regex.search(r'tt[0-9]+', matches_regex, regex.I)
                 else ["imdb:" + regex.search(r'tt[0-9]+', matches_regex, regex.I).group()])
-
-    # store the search request so we can get better results in subsequent iterations (if necessary)
-    torbox_request(store_search, query)
 
     # flatten and remove duplicates
     return remove_duplicates(flatten(scrape_releases(imdb_id, matches_regex, altquery) for imdb_id in imdb_ids))
@@ -149,15 +145,6 @@ def search_query(url):
 # search metadata by title and return a list of ids (eg. [imdb:tt1234567,imdb:tt7654321])
 def imdb_lookup(query):
     return [row.id for row in torbox_request(search_query, "https://search-api.torbox.app/search/" + query, get_ttl_hash())]
-
-
-def store_search(query):
-    # refresh active torrents based on any search criteria for future requests
-    url = "https://api.torbox.app/v1/api/torrents/storesearch?query=" + urllib.parse.quote(query)
-    ui_print("[torbox] storing search: " + url + " ...", ui_settings.debug)
-    response = session.put(url, timeout=timeout_sec)
-    ui_print("done", ui_settings.debug)
-    return response
 
 
 def flatten(matrix):
