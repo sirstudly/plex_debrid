@@ -8,7 +8,7 @@ name = "torrentio"
 default_opts = "https://torrentio.strem.fun/sort=qualitysize|qualityfilter=480p,scr,cam/manifest.json"
 base_url = "https://knightcrawler.elfhosted.com/"
 
-session = custom_session()
+session = custom_session(retry_codes=[503])
 
 
 def get(url):
@@ -20,6 +20,7 @@ def get(url):
         ui_print("done", ui_settings.debug)
         if hasattr(response, "status_code") and response.status_code != 200:
             ui_print(f'[torrentio] error {str(response.status_code)}: failed response from torrentio. {response.content.decode("utf-8")}')
+            return None
         response = json.loads(
             response.content, object_hook=lambda d: SimpleNamespace(**d))
         return response

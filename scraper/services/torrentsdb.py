@@ -124,7 +124,7 @@ def scrape(query, altquery):
         return []
 
     ui_print(f'[torrentsdb]: searching for {type}s with ID={imdb_id}', ui_settings.debug)
-    session = custom_session(get_rate_limit=float(rate_limit_sec), post_rate_limit=float(rate_limit_sec))
+    session = custom_session(get_rate_limit=float(rate_limit_sec), post_rate_limit=float(rate_limit_sec), retry_codes=[503])
     if type == 'movie':
         return scrape_imdb_movie(session, base_url, _get_base64_config(), imdb_id)
     return scrape_imdb_series(session, base_url, _get_base64_config(), imdb_id, s, e)
