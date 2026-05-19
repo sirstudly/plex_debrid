@@ -292,8 +292,12 @@ class setting:
                     console_input = input(self.prompt)
                     setattr(self.cls, self.key, console_input)
                 if self.name == 'Real Debrid API Key':
-                    url = 'https://api.real-debrid.com/rest/1.0/torrents?limit=2&auth_token=' + console_input
-                    response = debrid.services.realdebrid.session.get(url)
+                    url = 'https://api.real-debrid.com/rest/1.0/torrents?limit=2'
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
+                        'authorization': 'Bearer ' + console_input,
+                    }
+                    response = debrid.services.realdebrid.rate_limited_session.get(url, headers=headers)
                     if response.status_code == 200:
                         working = True
                     else:
