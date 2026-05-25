@@ -2,6 +2,7 @@ from base import *
 
 import releases
 import debrid
+import usenet
 import scraper
 from ui.ui_print import *
 from ui import ui_settings
@@ -1402,12 +1403,29 @@ class media:
                             langs += [version.lang]
                     self.aliases('en')
                     imdb_scraped = False
+                    usenet_done = False
                     for year in alternate_years:
                         i = 0
-                        while len(self.Releases) == 0 and i <= retries:
+                        while len(self.Releases) == 0 and i <= retries and not usenet_done:
                             for k, title in enumerate(self.alternate_titles):
-                                self.Releases += scraper.scrape(self.query(title).replace(
-                                    str(self.year), str(year)), self.deviation(year=str(year))+"("+imdbID+")?")
+                                query_str = self.query(title).replace(
+                                    str(self.year), str(year))
+                                altquery_str = self.deviation(year=str(year))+"("+imdbID+")?"
+                                if usenet.is_enabled():
+                                    self.Releases = scraper.scrape_usenet(
+                                        query_str, altquery_str, media_type='movie')
+                                    if len(self.Releases) > 0:
+                                        usenet_downloaded, retry = self.usenet_download(
+                                            force=False)
+                                        if usenet_downloaded:
+                                            refresh_ = True
+                                            self.year = year
+                                            usenet_done = True
+                                            break
+                                        self.Releases = []
+                                if usenet_done:
+                                    break
+                                self.Releases += scraper.scrape(query_str, altquery_str)
                                 if len(self.Releases) < 20 and k == 0 and not imdb_scraped and not imdbID == ".":
                                     self.Releases += scraper.scrape(
                                         imdbID, "(.*|"+imdbID+")")
@@ -1415,11 +1433,15 @@ class media:
                                 if len(self.Releases) > 0:
                                     break
                             i += 1
-                        if not len(self.Releases) == 0:
+                        if not len(self.Releases) == 0 or usenet_done:
                             self.year = year
                             break
-                    debrid_downloaded, retry = self.debrid_download(
-                        force=False)
+                    if not usenet_done:
+                        debrid_downloaded, retry = self.debrid_download(
+                            force=False)
+                    else:
+                        debrid_downloaded = True
+                        retry = False
                     if debrid_downloaded:
                         refresh_ = True
                         toc = time.perf_counter()
@@ -1602,7 +1624,22 @@ class media:
                 # If there was nothing downloaded, scrape specifically for this season
                 if not debrid_downloaded:
                     self.Releases = []
-                    if self.isanime():
+                    if usenet.is_enabled():
+                        for k, title in enumerate(self.alternate_titles[:3]):
+                            if self.isanime():
+                                usenet_query = self.anime_query(title)
+                                usenet_alt = "(.*|S"+str("{:02d}".format(self.index))+"|"+imdbID+"|nyaa"+"|".join(self.alternate_titles)+")"
+                            else:
+                                usenet_query = self.query(title)[:-1]
+                                usenet_alt = "(.*|S"+str("{:02d}".format(self.index))+"|"+imdbID+")"
+                            self.Releases = scraper.scrape_usenet(
+                                usenet_query, usenet_alt, media_type='tv')
+                            if len(self.Releases) > 0:
+                                debrid_downloaded, retry = self.usenet_download()
+                                if debrid_downloaded:
+                                    break
+                                self.Releases = []
+                    if not debrid_downloaded and self.isanime():
                         for k, title in enumerate(self.alternate_titles[:3]):
                             self.Releases += scraper.scrape(self.anime_query(title), "(.*|S"+str(
                                 "{:02d}".format(self.index))+"|"+imdbID+"|nyaa"+"|".join(self.alternate_titles)+")")
@@ -1680,6 +1717,22 @@ class media:
             if (not debrid_downloaded or retry) and not hasattr(self, "skip_scraping"):
                 if debrid_downloaded:
                     refresh_ = True
+                if usenet.is_enabled():
+                    for title in self.alternate_titles[:3]:
+                        if self.isanime():
+                            usenet_query = self.anime_query(title)
+                            usenet_alt = self.deviation() + "("+imdbID+")?(nyaa"+"|".join(self.alternate_titles)+")?"
+                        else:
+                            usenet_query = self.query(title)
+                            usenet_alt = self.deviation() + "("+imdbID+")?"
+                        self.Releases = scraper.scrape_usenet(
+                            usenet_query, usenet_alt, media_type='tv')
+                        if len(self.Releases) > 0:
+                            debrid_downloaded, retry = self.usenet_download()
+                            if debrid_downloaded:
+                                refresh_ = True
+                                return refresh_, retry
+                            self.Releases = []
                 if self.isanime():
                     for title in self.alternate_titles[:3]:
                         self.Releases += scraper.scrape(self.anime_query(title), self.deviation(
@@ -1740,6 +1793,57 @@ class media:
                 for episode in self.Episodes:
                     episode.version = self.version
                     episode.downloaded()
+
+    def _usenet_versions(self):
+        versions = []
+        for version in self.versions():
+            v = copy.deepcopy(version)
+            v.rules = [r for r in v.rules if r[0] != "cache status"]
+            versions += [v]
+        return versions
+
+    def usenet_download(self, force=False):
+        self.bitrate()
+        if len(self.Releases) > 0:
+            releases.print_releases(self.Releases, True)
+        scraped_releases = [r for r in copy.deepcopy(self.Releases) if getattr(r, 'type', '') == 'nzb']
+        downloaded = []
+        if len(scraped_releases) == 0:
+            return False, True
+        usenet_versions = self._usenet_versions()
+        if len(usenet_versions) == 0:
+            ui_print(
+                "error: it seems that no version applies to this media item for usenet! nothing will be downloaded. adjust your version settings.", ui_settings.debug)
+            return False, True
+        for version in usenet_versions:
+            self.version = version
+            self.Releases = copy.deepcopy(scraped_releases)
+            releases.sort(self.Releases, self.version)
+
+            filtered_releases = []
+            for release in self.Releases:
+                if not sqlite_store.is_release_at_status(self, release, ['blacklisted', 'submitted', 'downloaded']):
+                    filtered_releases.append(release)
+                    sqlite_store.upsert_release(self, release, downloaded=False)
+                else:
+                    ui_print(f"[usenet_download] filtering out previously processed release: {release.title}", ui_settings.debug)
+
+            self.Releases = filtered_releases
+            if len(self.Releases) > 0:
+                releases.print_releases(self.Releases, True)
+
+            ver_dld = False
+            for release in copy.deepcopy(self.Releases):
+                self.Releases = [release, ]
+                if usenet.download(self, stream=True, query='', force=force):
+                    self.downloaded()
+                    sqlite_store.mark_release_submitted(self, release)
+                    downloaded += [True]
+                    ver_dld = True
+                    break
+            if not ver_dld:
+                downloaded += [False]
+        return True in downloaded, (False in downloaded or len(downloaded) == 0)
 
     def debrid_download(self, force=False):
         debrid.check(self)

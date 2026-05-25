@@ -54,6 +54,10 @@ def init_db(db_dir: Optional[str] = None, filename: str = "plex_debrid.sqlite3")
                 _connection.execute("ALTER TABLE media_show ADD COLUMN last_collection_progress_at TEXT")
         except Exception:
             pass
+        try:
+            _connection.execute("DELETE FROM media_release WHERE hash = '' OR hash IS NULL")
+        except Exception:
+            pass
         _connection.commit()
 
         _db_path = db_file
@@ -128,6 +132,15 @@ def _count_collected_episodes(media_obj, library_list) -> int:
     return count
 
 
+def _db_hash(release) -> Optional[str]:
+    """Return the hash column value for a release (infohash or Prowlarr guid for NZBs)."""
+    if getattr(release, 'type', '') == 'nzb':
+        g = getattr(release, 'guid', None)
+        return str(g).strip() if g else None
+    h = getattr(release, 'hash', None)
+    return str(h).strip() if h else None
+
+
 def upsert_release(media_obj, release, downloaded: bool = False) -> None:
     """Upsert a release row for the given media item.
 
@@ -150,7 +163,9 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
         dl = getattr(release, 'download', None)
         if isinstance(dl, list) and len(dl) > 0:
             link = str(dl[0])
-        hash_value = getattr(release, 'hash', None)
+        hash_value = _db_hash(release)
+        if hash_value is None:
+            return
         try:
             seeders = int(getattr(release, 'seeders', 0) or 0)
         except Exception:
@@ -173,7 +188,7 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
                 source=excluded.source,
                 status=CASE 
                     WHEN excluded.status = 'downloaded' THEN 'downloaded'
-                    WHEN media_release.status = 'downloaded' THEN 'downloaded'
+                    WHEN media_release.status IN ('submitted', 'downloaded', 'blacklisted') THEN media_release.status
                     ELSE excluded.status
                 END,
                 updated_at=datetime('now')
@@ -183,7 +198,7 @@ def upsert_release(media_obj, release, downloaded: bool = False) -> None:
                 None if title is None else str(title),
                 size,
                 None if link is None else str(link),
-                None if hash_value is None else str(hash_value),
+                hash_value,
                 seeders,
                 None if source is None else str(source),
                 status,
@@ -202,18 +217,38 @@ def mark_release_downloaded(media_obj, release) -> None:
         key_guid = _compute_key_guid(media_obj)
         if key_guid is None:
             return
-        hash_value = getattr(release, 'hash', None)
+        hash_value = _db_hash(release)
         if hash_value is None:
             return
         
         # Update the status to downloaded
         conn.execute(
             "UPDATE media_release SET status = 'downloaded', updated_at = datetime('now') WHERE guid = ? AND hash = ?",
-            (key_guid, str(hash_value))
+            (key_guid, hash_value)
         )
         conn.commit()
     except Exception as e:
         print("[sqlite] error: couldnt mark release as downloaded: " + str(e))
+
+
+def mark_release_submitted(media_obj, release) -> None:
+    """Mark an existing or new release as submitted (Usenet grab sent to Prowlarr)."""
+    try:
+        conn = _get_connection()
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return
+        hash_value = _db_hash(release)
+        if hash_value is None:
+            return
+
+        conn.execute(
+            "UPDATE media_release SET status = 'submitted', updated_at = datetime('now') WHERE guid = ? AND hash = ?",
+            (key_guid, hash_value)
+        )
+        conn.commit()
+    except Exception as e:
+        print("[sqlite] error: couldnt mark release as submitted: " + str(e))
 
 
 def is_release_at_status(media_obj, release, statuses) -> bool:
@@ -232,7 +267,7 @@ def is_release_at_status(media_obj, release, statuses) -> bool:
         key_guid = _compute_key_guid(media_obj)
         if key_guid is None:
             return False
-        hash_value = getattr(release, 'hash', None)
+        hash_value = _db_hash(release)
         if hash_value is None:
             return False
         
@@ -243,7 +278,7 @@ def is_release_at_status(media_obj, release, statuses) -> bool:
         # Query the database for the release status
         cursor = conn.execute(
             "SELECT status FROM media_release WHERE guid = ? AND hash = ?",
-            (key_guid, str(hash_value))
+            (key_guid, hash_value)
         )
         result = cursor.fetchone()
         

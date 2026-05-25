@@ -1,8 +1,12 @@
 #import modules
 from base import *
+from threading import Lock
 #import parent modules
 from content import classes
 from ui.ui_print import *
+import usenet
+
+MAX_REFRESH_WAIT_MULTIPLIER = 10
 
 name = 'Plex'
 session = custom_session(get_rate_limit=1.0, post_rate_limit=1.0)  # 1 second between requests = 60 requests/minute
@@ -692,6 +696,76 @@ class library(classes.library):
         sections = []
         partial = "true"
         delay = "2"
+        _coalesce_lock = Lock()
+        _coalesce_jobs = {}
+        _coalesce_workers = set()
+
+        @classmethod
+        def _delay_seconds(cls):
+            try:
+                return float(cls.delay)
+            except Exception:
+                ui_print("[plex] error: provided refresh delay is not a number! using default 2 second delay.")
+                return 2.0
+
+        @staticmethod
+        def coalesce_fire_at(quiet_deadline, max_deadline):
+            return min(quiet_deadline, max_deadline)
+
+        @classmethod
+        def _schedule_coalesced(cls, section_key, section_title, folders):
+            delay = cls._delay_seconds()
+            max_wait = delay * MAX_REFRESH_WAIT_MULTIPLIER
+            now = time.time()
+            with cls._coalesce_lock:
+                job = cls._coalesce_jobs.get(section_key)
+                if job is None:
+                    cls._coalesce_jobs[section_key] = {
+                        'section_title': section_title,
+                        'folders': set(folders),
+                        'quiet_deadline': now + delay,
+                        'max_deadline': now + max_wait,
+                    }
+                else:
+                    job['folders'].update(folders)
+                    job['quiet_deadline'] = now + delay
+                if section_key not in cls._coalesce_workers:
+                    cls._coalesce_workers.add(section_key)
+                    Thread(target=cls._coalesce_worker, args=(section_key,)).start()
+            ui_print(
+                '[plex] scheduled coalesced refresh for section "' + section_title
+                + '" (quiet delay ' + str(delay) + 's, max wait ' + str(max_wait) + 's)',
+                debug=ui_settings.debug)
+
+        @classmethod
+        def _coalesce_worker(cls, section_key):
+            while True:
+                with cls._coalesce_lock:
+                    job = cls._coalesce_jobs.get(section_key)
+                    if not job:
+                        cls._coalesce_workers.discard(section_key)
+                        return
+                    fire_at = cls.coalesce_fire_at(job['quiet_deadline'], job['max_deadline'])
+                    now = time.time()
+                if now < fire_at:
+                    time.sleep(min(fire_at - now, 1.0))
+                    continue
+                with cls._coalesce_lock:
+                    job = cls._coalesce_jobs.pop(section_key, None)
+                    if not job:
+                        cls._coalesce_workers.discard(section_key)
+                        return
+                    folders = list(job['folders'])
+                    title = job['section_title']
+                    max_hit = time.time() >= job['max_deadline']
+                if max_hit:
+                    ui_print('[plex] coalesced refresh max wait reached for section "' + title + '"', debug=ui_settings.debug)
+                ui_print('[plex] refreshing library section: "' + title + '"')
+                cls.call([[section_key, folders]])
+                with cls._coalesce_lock:
+                    if section_key not in cls._coalesce_jobs:
+                        cls._coalesce_workers.discard(section_key)
+                        return
 
         def setup(cls, new=False):
             ui_cls("Options/Settings/Library Services/Library update services")
@@ -871,22 +945,20 @@ class library(classes.library):
                         names += [section_.title]
                         folders = []
                         for location in section_.Location:
-                            if hasattr(element,"downloaded_releases") and len(element.downloaded_releases) > 0 and library.refresh.partial == "true":
+                            use_partial = library.refresh.partial == "true"
+                            if hasattr(element, "usenet_grab") and element.usenet_grab and usenet.use_full_library_scan():
+                                use_partial = False
+                            if hasattr(element,"downloaded_releases") and len(element.downloaded_releases) > 0 and use_partial:
                                 for release in element.downloaded_releases:
                                     folders += [requests.utils.quote(location.path + "/" + release)]
                             else:
                                 folders += [requests.utils.quote(location.path)]
                         paths += [[section_.key,folders]]
-                delay = 2
-                try:
-                    delay = float(library.refresh.delay)
-                except:
-                    ui_print("[plex] error: provided refresh delay is not a number! using default 2 second delay.")
-                time.sleep(delay)
-                ui_print('[plex] refreshing '+element_type+' library section/s: "' + '","'.join(names) + '"')
-                results = [None]
-                t = Thread(target=multi_init, args=(library.refresh.call, paths, results, 0))
-                t.start()
+                if len(paths) == 0:
+                    return
+                for index, path in enumerate(paths):
+                    section_title = names[index] if index < len(names) else path[0]
+                    library.refresh._schedule_coalesced(path[0], section_title, path[1])
             except:
                 ui_print("[plex] error: couldnt refresh libraries. Make sure you have setup a plex user!")
 

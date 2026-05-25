@@ -4,6 +4,7 @@ import content
 import scraper
 import releases
 import debrid
+import usenet
 from ui import ui_settings
 
 class setting:
@@ -308,10 +309,15 @@ class setting:
                     working = True
 
     def set(self, value):
+        if self.cls == scraper.services and self.key == 'active' and isinstance(value, list):
+            value = [entry for entry in value if entry not in scraper.services.HIDDEN]
         setattr(self.cls, self.key, value)
 
     def get(self):
-        return getattr(self.cls, self.key)
+        value = getattr(self.cls, self.key)
+        if self.cls == scraper.services and self.key == 'active' and isinstance(value, list):
+            value = [entry for entry in value if entry not in scraper.services.HIDDEN]
+        return value
 
 settings_list = [
     ['Content Services', [
@@ -407,6 +413,15 @@ settings_list = [
         setting('Debridio Scraper Parameters', 'Please enter a valid Debridio manifest URL: ', scraper.services.debridio, 'manifest_json_url', entry="parameter",
                 help='This setting lets you control the Debridio scraping parameters. Visit https://debridio.com and configure your addon, then copy your manifest URL (must end with manifest.json) and paste it here.', hidden=True),
             ]
+        ],
+    ['Usenet Services', [
+        setting('Usenet enabled', 'Please enter "true" or "false": ', usenet, 'enabled',
+                help='When enabled, plex_debrid tries Usenet via Prowlarr (search + grab) before falling back to torrent/debrid.'),
+        setting('Usenet Services', [''], usenet.services, 'active', entry="service", subclass=True,
+                help='Usenet download backend. Configure Prowlarr Base URL/API Key under Scraper Settings and add nzbdav as a SABnzbd download client in Prowlarr.'),
+        setting('Usenet full library scan', 'Please enter "true" or "false": ', usenet, 'full_library_scan',
+                help='After a successful Usenet grab, force a full Plex library scan instead of a partial scan.'),
+    ]
         ],
     ['Debrid Services', [
         setting('Debrid Services', [''], debrid.services, 'active', required=True, preflight=True, entry="service",

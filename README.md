@@ -47,7 +47,7 @@ This is a work in progress, and im not a professional programmer. shits not read
 - Scraping Releases from:
    - <img src="https://i.ibb.co/w4BnkC9/GwxAcDV.png" height="16"> **[Torrentio](https://torrentio.strem.fun/configure)**
    - <img src="https://user-images.githubusercontent.com/27040483/28728094-99f3e3f6-73c7-11e7-8f8d-28912dc6ac0d.png" height="16"> **[Jackett](https://github.com/Jackett/Jackett)**
-   - <img src="https://prowlarr.com/img/favicon-32x32.png" height="16"> **[Prowlarr](https://github.com/Prowlarr/Prowlarr)**
+   - <img src="https://prowlarr.com/img/favicon-32x32.png" height="16"> **[Prowlarr](https://github.com/Prowlarr/Prowlarr)** (torrents, or Usenet via optional Prowlarr grab path)
    - <img src="https://orionoid.com/web/images/logo/logo256.png" height="16"> **[Orionoid](https://orionoid.com/)**
    - <img src="https://progsoft.net/images/rarbg-icon-648af4dcc6ec63ee49d6c050af63d2547c74d46c.png" height="16"> **[RARBG](https://rarbg.to/)**
    - <img src="https://1337x.to/favicon.ico" height="16"> **[1337X](https://1337x.to/)**
@@ -561,6 +561,32 @@ Plex Debrid includes a modern web dashboard for monitoring pending media items a
 >  
 >  - Torbox is an easy-to-use, modern, private, and secure all-in-one platform for downloading torrents, accessing hosters, and using the Usenet.
 >  - You can integrate torbox into plex_debrid by navigating to '/Settings/Scraper/Sources/Edit/Add source/torbox'.
+>
+></details>
+ 
+### :newspaper: Usenet Services (Prowlarr + nzbdav):
+
+*Optional Usenet path via Prowlarr. When enabled, plex_debrid searches Newznab indexers through Prowlarr and submits grabs to the download client configured in Prowlarr (e.g. [nzbdav](https://github.com/nzbdav-dev/nzbdav) as SABnzbd). If Usenet fails, plex_debrid falls back to the normal torrent/debrid flow.*
+
+><details>
+>  <summary><b><u>Usenet setup:</u></b></summary>
+>  
+>  **In Prowlarr (not plex_debrid):**
+>  1. Add your Newznab indexers (e.g. NZBPlanet at `https://api.nzbplanet.net`).
+>  2. Add **nzbdav** as a **SABnzbd** download client.
+>  3. Configure **category mappings** on that client: Movies (`2000`) → `radarr`, TV (`5000`) → `sonarr` (or your nzbdav category names).
+>  
+>  **Infrastructure (outside plex_debrid):**
+>  - nzbdav configured with your Usenet provider
+>  - rclone WebDAV mount of nzbdav at the path your Plex libraries use
+>  
+>  **In plex_debrid:**
+>  1. Set **Prowlarr Base URL** and **Prowlarr API Key** under Scraper Settings (same as torrent Prowlarr).
+>  2. Navigate to `/Settings/Usenet Services/` and set **Usenet enabled** to `true`.
+>  3. Enable **Prowlarr** under **Usenet Services**.
+>  4. Keep **Usenet full library scan** at `true` (recommended) so Plex scans the whole library after a grab.
+>  
+>  plex_debrid does **not** talk to nzbdav directly. A successful Prowlarr grab triggers a Plex library refresh after the configured delay.
 >
 ></details>
  

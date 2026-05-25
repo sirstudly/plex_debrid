@@ -4,6 +4,7 @@ import content
 import scraper
 import releases
 import debrid
+import usenet
 from ui import ui_settings
 from ui.ui_print import *
 from settings import *
@@ -76,6 +77,25 @@ def web_interface():
     print('Press Enter to return to the main menu.')
     input()
 
+def _scraper_sort_releases(scraped_releases, version):
+    if version is None:
+        return
+    sort_version = version
+    if scraped_releases and getattr(scraped_releases[0], 'type', '') == 'nzb':
+        sort_version = copy.deepcopy(version)
+        sort_version.rules = [r for r in sort_version.rules if r[0] != "cache status"]
+    releases.sort(scraped_releases, sort_version)
+
+
+def _scraper_download_release(release, query, obj):
+    if getattr(release, 'type', '') == 'nzb':
+        obj.Releases = [release]
+        return usenet.download(obj, stream=True, query=query, force=True)
+    release.Releases = [release]
+    release.type = ("show" if regex.search(r'(S[0-9]+|SEASON|E[0-9]+|EPISODE|[0-9]+-[0-9])', release.title, regex.I) else "movie")
+    return debrid.download(release, stream=True, query=query, force=True)
+
+
 def scrape():
     ui_cls('Options/Scraper/')
     print('Press Enter to return to the main menu.')
@@ -125,30 +145,37 @@ def scrape():
                             query = value + query
                         elif operator == "add text after title":
                             query = query + value
-        scraped_releases = scraper.scrape(query)
+        scraped_releases = scraper.scrape_with_usenet_fallback(query)
         if len(scraped_releases) > 0:
             obj.Releases = scraped_releases
-            debrid.check(obj, force=True)
-            scraped_releases = obj.Releases
-            if not obj.version == None:
-                releases.sort(scraped_releases, obj.version)
+            if getattr(scraped_releases[0], 'type', '') != 'nzb':
+                debrid.check(obj, force=True)
+                scraped_releases = obj.Releases
+            _scraper_sort_releases(scraped_releases, obj.version)
+            usenet_results = getattr(scraped_releases[0], 'type', '') == 'nzb'
             back = False
             while not back:
                 ui_cls('Options/Scraper/')
                 print("0) Back")
                 releases.print_releases(scraped_releases)
                 print()
-                print("Type 'auto' to automatically download the first cached release.")
+                if usenet_results:
+                    print("Type 'auto' to automatically grab the first usenet release.")
+                else:
+                    print("Type 'auto' to automatically download the first cached release.")
                 print()
                 choice = input("Choose a release to download: ")
                 try:
                     if choice == 'auto':
                         release = scraped_releases[0]
-                        release.Releases = scraped_releases
-                        release.type = ("show" if regex.search(r'(S[0-9]+|SEASON|E[0-9]+|EPISODE|[0-9]+-[0-9])',release.title,regex.I) else "movie")
-                        if debrid.download(release, stream=True, query=query, force=True):
-                            content.classes.media.collect(release)
+                        if _scraper_download_release(release, query, obj):
+                            if not usenet_results:
+                                content.classes.media.collect(release)
                             scraped_releases.remove(scraped_releases[0])
+                            time.sleep(3)
+                        elif usenet_results:
+                            print()
+                            print("Usenet grab failed. Choose another release?")
                             time.sleep(3)
                         else:
                             print()
@@ -159,17 +186,23 @@ def scrape():
                             print()
                             choice = input("Choose an action: ")
                             if choice == '1':
-                                debrid.download(release, stream=False, query=query, force=True)
-                                content.classes.media.collect(release)
-                                scraped_releases.remove(scraped_releases[0])
-                                time.sleep(3)
+                                release.Releases = [release]
+                                release.type = ("show" if regex.search(r'(S[0-9]+|SEASON|E[0-9]+|EPISODE|[0-9]+-[0-9])', release.title, regex.I) else "movie")
+                                if debrid.download(release, stream=False, query=query, force=True):
+                                    content.classes.media.collect(release)
+                                    scraped_releases.remove(scraped_releases[0])
+                                    time.sleep(3)
                     elif int(choice) <= len(scraped_releases) and not int(choice) <= 0:
                         release = scraped_releases[int(choice) - 1]
-                        release.Releases = [release, ]
-                        release.type = ("show" if regex.search(r'(S[0-9]+|SEASON|E[0-9]+|EPISODE|[0-9]+-[0-9])',release.title,regex.I) else "movie")
-                        if debrid.download(release, stream=True, query=release.title, force=True):
-                            content.classes.media.collect(release)
+                        download_query = query if usenet_results else release.title
+                        if _scraper_download_release(release, download_query, obj):
+                            if not usenet_results:
+                                content.classes.media.collect(release)
                             scraped_releases.remove(scraped_releases[int(choice) - 1])
+                            time.sleep(3)
+                        elif usenet_results:
+                            print()
+                            print("Usenet grab failed. Choose another release?")
                             time.sleep(3)
                         else:
                             print()
@@ -181,6 +214,8 @@ def scrape():
                             print()
                             choice2 = input("Choose an action: ")
                             if choice2 == '1':
+                                release.Releases = [release]
+                                release.type = ("show" if regex.search(r'(S[0-9]+|SEASON|E[0-9]+|EPISODE|[0-9]+-[0-9])', release.title, regex.I) else "movie")
                                 if debrid.download(release, stream=False, query=query, force=True):
                                     content.classes.media.collect(release)
                                     scraped_releases.remove(scraped_releases[int(choice) - 1])
@@ -221,14 +256,15 @@ def settings():
             if len(settings) > 1:
                 print('0) Back')
                 for index, setting in enumerate(settings):
-                    if not setting.hidden:
-                        print(str(index + 1) + ') ' + setting.name)
+                    print(str(index + 1) + ') ' + setting.name)
                 print()
                 choice2 = input('Choose an action: ')
-            else:
+            elif len(settings) == 1:
                 choice2 = '1'
-            for index, setting in enumerate(list[int(choice) - 1][1]):
-                if choice2 == str(index + 1) and not setting.hidden:
+            else:
+                choice2 = '0'
+            for index, setting in enumerate(settings):
+                if choice2 == str(index + 1):
                     ui_cls('Options/Settings/' + list[int(choice) - 1][0] + '/' + setting.name)
                     setting.input()
         elif choice == '0':
@@ -619,6 +655,8 @@ def preflight():
     for category, settings in settings_list:
         for setting in settings:
             if setting.preflight:
+                if usenet.is_enabled() and setting.name == 'Debrid Services':
+                    continue
                 if len(setting.get()) == 0:
                     missing += [setting]
     if len(missing) > 0:

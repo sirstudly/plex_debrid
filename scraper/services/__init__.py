@@ -21,6 +21,8 @@ from scraper.services import limetorrents
 from scraper.services import torrentsdb
 from scraper.services import debridio
 
+HIDDEN = ['prowlarr usenet']
+
 #define subclass method
 def __subclasses__():
     return [rarbg,rarbgv2,x1337,jackett,prowlarr,orionoid,nyaa,torrentio,zilean,torbox,mediafusion,comet,eztv,thepiratebay,torrentgalaxy,yts,limetorrents,magnetdl,torrentsdb,debridio]
@@ -73,6 +75,8 @@ def get():
     cls = sys.modules[__name__]
     activeservices = []
     for servicename in active:
+        if servicename in HIDDEN:
+            continue
         for service in cls.__subclasses__():
             if service.name == servicename:
                 activeservices += [service]
@@ -85,6 +89,8 @@ def sequential():
     for sequence in overwrite:
         activesequence = []
         for servicename in sequence:
+            if servicename in HIDDEN:
+                continue
             for service in cls.__subclasses__():
                 if service.name == servicename:
                     activesequence += [service]

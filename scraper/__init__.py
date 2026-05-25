@@ -69,6 +69,35 @@ def traditional():
                 return True
     return False
 
+
+def scrape_usenet(query, altquery, media_type='movie'):
+    import usenet
+    if not usenet.is_enabled():
+        return []
+    ui_print('scraping usenet via prowlarr for query "' + query + '" ...')
+    ui_print('accepting titles that regex match "' + altquery + '" ...', debug=ui_settings.debug)
+    from scraper.services import prowlarr_usenet
+    scraped_releases = prowlarr_usenet.scrape(query, altquery, media_type=media_type)
+    for release in scraped_releases:
+        release.title = ''.join([i if ord(i) < 512 else '' for i in release.title])
+    ui_print('done - found ' + str(len(scraped_releases)) + ' usenet releases')
+    return scraped_releases
+
+
+def infer_media_type(query):
+    if regex.search(r'(S[0-9]+|SEASON|E[0-9]+|EPISODE|[0-9]+-[0-9])', query, regex.I):
+        return 'tv'
+    return 'movie'
+
+
+def scrape_with_usenet_fallback(query, altquery="(.*)"):
+    import usenet
+    if usenet.is_enabled():
+        usenet_releases = scrape_usenet(query, altquery, media_type=infer_media_type(query))
+        if len(usenet_releases) > 0:
+            return usenet_releases
+    return scrape(query, altquery)
+
 # Multiprocessing scrape method
 def multi_scrape(cls, query, altquery, result, index):
     result[index] = cls.scrape(query, altquery)
