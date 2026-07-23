@@ -828,6 +828,11 @@ class media:
                         if not episode.query() + ' [' + version.name + ']' in media.downloaded_versions:
                             missing = True
                             break
+                        if usenet.is_enabled():
+                            from content.services.plex import current_library
+                            if not episode.collected(current_library):
+                                missing = True
+                                break
                 if not missing:
                     versions.remove(version)
         if quick:
@@ -1030,13 +1035,15 @@ class media:
         global imdb_scraped
         imdb_scraped = False
         names = []
-        retries = 0
         for version in self.versions():
             names += [version.name]
-            for trigger in version.triggers:
+        retries = 0
+        for version_def in releases.sort.versions:
+            if '\u0336' in version_def[0]:
+                continue
+            for trigger in version_def[1]:
                 if trigger[0] == "retries" and trigger[1] == "<=":
-                    if int(float(trigger[2])) > retries:
-                        retries = int(float(trigger[2]))
+                    retries = max(retries, int(float(trigger[2])))
         if retries == 0:
             return
 
@@ -1050,7 +1057,7 @@ class media:
         else:
             match = next((x for x in media.ignore_queue if self == x), None)
             if match is not None:
-                if match.ignored_count < retries:
+                if match.ignored_count <= retries:
                     match.ignored_count += 1
                     ui_print(message + ' - attempt ' + str(match.ignored_count) + '/' + str(retries))
                 else:
@@ -1608,7 +1615,8 @@ class media:
                 return False, False
             ui_print(f"processing: {self.parentTitle} {self.title}", debug=ui_settings.debug)
             sqlite_store.update_db(self, library, source=self.watchlist.__module__.split('.')[-1])
-            debrid_downloaded = False
+            torrent_grabbed = False
+            usenet_grabbed = False
             for release in parentReleases:
                 if regex.match(self.deviation(), release.title, regex.I):
                     self.Releases += [release]
@@ -1617,12 +1625,20 @@ class media:
             # If there is more than one episode
             if len(self.Episodes) > 2:
                 if self.season_pack(scraped_releases):
-                    debrid_downloaded, retry = self.debrid_download()
-                if scraper.traditional() or debrid_downloaded:
+                    torrent_grabbed, retry = self.debrid_download()
+                if (scraper.traditional() and not usenet.is_enabled()) or torrent_grabbed:
                     for episode in self.Episodes:
                         episode.skip_scraping = True
-                # If there was nothing downloaded, scrape specifically for this season
-                if not debrid_downloaded:
+                skip_season_usenet = (
+                    usenet.is_enabled()
+                    and not self.collected(library)
+                    and sqlite_store.has_submitted_release(self)
+                )
+                if skip_season_usenet:
+                    ui_print(
+                        f"season pack previously submitted but not collected — trying individual episodes for {self.parentTitle} {self.title}",
+                        debug=ui_settings.debug)
+                elif not torrent_grabbed:
                     self.Releases = []
                     if usenet.is_enabled():
                         for k, title in enumerate(self.alternate_titles[:3]):
@@ -1635,11 +1651,11 @@ class media:
                             self.Releases = scraper.scrape_usenet(
                                 usenet_query, usenet_alt, media_type='tv')
                             if len(self.Releases) > 0:
-                                debrid_downloaded, retry = self.usenet_download()
-                                if debrid_downloaded:
+                                usenet_grabbed, retry = self.usenet_download()
+                                if usenet_grabbed:
                                     break
                                 self.Releases = []
-                    if not debrid_downloaded and self.isanime():
+                    if not torrent_grabbed and not usenet_grabbed and self.isanime():
                         for k, title in enumerate(self.alternate_titles[:3]):
                             self.Releases += scraper.scrape(self.anime_query(title), "(.*|S"+str(
                                 "{:02d}".format(self.index))+"|"+imdbID+"|nyaa"+"|".join(self.alternate_titles)+")")
@@ -1664,16 +1680,16 @@ class media:
                     scraped_releases = copy.deepcopy(self.Releases)
             # If there was nothing downloaded, attempt downloading again using the newly scraped releases
             retry = False
-            if not debrid_downloaded:
+            if not torrent_grabbed and not usenet_grabbed:
                 for release in self.Releases[:]:
                     if not regex.match(self.deviation(), release.title, regex.I):
                         ui_print("[download (show)] " + release.title + " does not match deviation " + self.deviation())
                         self.Releases.remove(release)
                 if self.season_pack(scraped_releases):
-                    debrid_downloaded, retry = self.debrid_download()
+                    torrent_grabbed, retry = self.debrid_download()
             retryep = False
-            # If a season pack was downloaded, make sure there are episode releases available for missing versions before attempting to download
-            if debrid_downloaded:
+            # If a season pack was downloaded via debrid, make sure there are episode releases available for missing versions before attempting to download
+            if torrent_grabbed:
                 refresh_ = True
                 attempt_episodes = False
                 for episode in self.Episodes:
@@ -1689,21 +1705,30 @@ class media:
                             break
                     if not attempt_episodes:
                         episode.skip_download = True
+            elif usenet_grabbed and not self.collected(library):
+                refresh_ = True
+            defer_episode_fallback = usenet_grabbed and not self.collected(library)
+            if defer_episode_fallback:
+                ui_print(
+                    f"season pack submitted — deferring episode downloads until next run for {self.parentTitle} {self.title}",
+                    debug=ui_settings.debug)
+                retry = True
             # Check if all episodes were successfuly downloaded, download them or queue them to be ignored otherwise
-            for episode in self.Episodes:
-                if parent_show and sqlite_store.is_media_blacklisted(parent_show):
-                    ui_print(f"season: '{self.parentTitle} {self.title}' - show blacklisted, stopping episode processing.", debug=ui_settings.debug)
-                    break
-                if len(episode.versions()) > 0:
-                    downloaded = False
-                    retryep = True
-                    if not hasattr(episode, "skip_download"):
-                        downloaded, retryep = episode.download(
-                            library=library, parentReleases=scraped_releases, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
-                    if downloaded:
-                        refresh_ = True
-                    if retryep:
-                        episode.watch(plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests, library)
+            if not defer_episode_fallback:
+                for episode in self.Episodes:
+                    if parent_show and sqlite_store.is_media_blacklisted(parent_show):
+                        ui_print(f"season: '{self.parentTitle} {self.title}' - show blacklisted, stopping episode processing.", debug=ui_settings.debug)
+                        break
+                    if len(episode.versions()) > 0:
+                        downloaded = False
+                        retryep = True
+                        if not hasattr(episode, "skip_download"):
+                            downloaded, retryep = episode.download(
+                                library=library, parentReleases=scraped_releases, plex_watchlist=plex_watchlist, trakt_watchlist=trakt_watchlist, overseerr_requests=overseerr_requests, sqlite_requests=sqlite_requests)
+                        if downloaded:
+                            refresh_ = True
+                        if retryep:
+                            episode.watch(plex_watchlist, trakt_watchlist, overseerr_requests, sqlite_requests, library)
             return refresh_, (retry or retryep)
         elif self.type == 'episode':
             for release in parentReleases:
@@ -1798,7 +1823,7 @@ class media:
         versions = []
         for version in self.versions():
             v = copy.deepcopy(version)
-            v.rules = [r for r in v.rules if r[0] != "cache status"]
+            v.rules = [r for r in v.rules if r[0] not in ("cache status", "seeders")]
             versions += [v]
         return versions
 
@@ -1836,7 +1861,8 @@ class media:
             for release in copy.deepcopy(self.Releases):
                 self.Releases = [release, ]
                 if usenet.download(self, stream=True, query='', force=force):
-                    self.downloaded()
+                    if self.type in ('movie', 'episode'):
+                        self.downloaded()
                     sqlite_store.mark_release_submitted(self, release)
                     downloaded += [True]
                     ver_dld = True

@@ -251,6 +251,23 @@ def mark_release_submitted(media_obj, release) -> None:
         print("[sqlite] error: couldnt mark release as submitted: " + str(e))
 
 
+def has_submitted_release(media_obj) -> bool:
+    """Return True if any release for this media guid is in submitted status."""
+    try:
+        conn = _get_connection()
+        key_guid = _compute_key_guid(media_obj)
+        if key_guid is None:
+            return False
+        cursor = conn.execute(
+            "SELECT 1 FROM media_release WHERE guid = ? AND status = 'submitted' LIMIT 1",
+            (key_guid,),
+        )
+        return cursor.fetchone() is not None
+    except Exception as e:
+        print("[sqlite] error: couldnt check submitted releases: " + str(e))
+        return False
+
+
 def is_release_at_status(media_obj, release, statuses) -> bool:
     """Check if a release has any of the specified statuses in the database.
     
