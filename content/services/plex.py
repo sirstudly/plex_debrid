@@ -1208,6 +1208,116 @@ class library(classes.library):
                 ui_print("[plex] error: couldnt check ignore status for item: " + str(e), debug=ui_settings.debug)
                 return False
 
+    def list_for_arr_import(media_type):
+        """
+        Enumerate Plex library items for Radarr/Sonarr import (lightweight).
+
+        media_type: 'movie' or 'show'
+        Includes unavailable items and requests Guids on the listing when possible.
+        Does not perform per-item metadata fetches — call enrich_for_arr_import()
+        for items that still lack EIDs, ideally while processing each item.
+        """
+        if media_type not in ('movie', 'show'):
+            raise ValueError("media_type must be 'movie' or 'show'")
+        if not users:
+            ui_print("[plex error]: no Plex users configured.")
+            return []
+        if not library.url:
+            ui_print("[plex error]: Plex server address not configured.")
+            return []
+
+        token = users[0][1]
+        plex_type = '1' if media_type == 'movie' else '2'
+        sections = []
+        names = []
+        try:
+            response = get(session, library.url + '/library/sections/?X-Plex-Token=' + token)
+            if not response or not hasattr(response, 'MediaContainer') or not hasattr(response.MediaContainer, 'Directory'):
+                ui_print("[plex error]: couldnt reach local plex server at: " + library.url)
+                return []
+            for Directory in response.MediaContainer.Directory:
+                if Directory.type == media_type:
+                    if library.check == [['']]:
+                        library.check = []
+                    if ([Directory.key] in library.check or library.check == []):
+                        sections.append(Directory.key)
+                        names.append(Directory.title)
+        except Exception as e:
+            ui_print("[plex error]: couldnt reach local plex server at: " + library.url + " - " + str(e))
+            return []
+
+        if not sections:
+            ui_print("[plex error]: no matching library sections found for type: " + media_type)
+            return []
+
+        ui_print('[plex] listing ' + media_type + ' section/s "' + '","'.join(names) + '" (including unavailable) ...')
+        items = []
+        seen_keys = set()
+        for section in sections:
+            url = (
+                library.url
+                + '/library/sections/'
+                + section
+                + '/all?type='
+                + plex_type
+                + '&includeUnavailable=1&includeGuids=1&X-Plex-Token='
+                + token
+            )
+            response = get(session, url)
+            if not response or not hasattr(response, 'MediaContainer'):
+                continue
+            if not hasattr(response.MediaContainer, 'Metadata'):
+                continue
+            for element in response.MediaContainer.Metadata:
+                item = classes.media(element)
+                key = getattr(item, 'ratingKey', None)
+                if key and key in seen_keys:
+                    continue
+                if key:
+                    seen_keys.add(key)
+                item.EID = setEID(item)
+                items.append(item)
+
+        if not items:
+            ui_print("[plex]: no " + media_type + " items found in library.")
+            return []
+
+        ui_print('[plex] listed ' + str(len(items)) + ' ' + media_type + '(s).')
+        return items
+
+    def enrich_for_arr_import(item):
+        """
+        Ensure a listed library item has EID populated.
+        Fetches /library/metadata/{ratingKey} only when Guid/EID is missing.
+        Uses a non-rate-limited request so bulk import is not stalled at 1 req/sec.
+        Returns the item (possibly updated) or None on failure.
+        """
+        if getattr(item, 'EID', None):
+            return item
+        if hasattr(item, 'Guid') and item.Guid:
+            item.EID = setEID(item)
+            if item.EID:
+                return item
+        if not users or not library.url or not hasattr(item, 'ratingKey'):
+            return None
+        token = users[0][1]
+        title = getattr(item, 'title', 'unknown')
+        try:
+            url = library.url + '/library/metadata/' + str(item.ratingKey) + '?X-Plex-Token=' + token
+            # Bypass the shared rate-limited session for bulk import throughput
+            response = requests.get(url, headers=headers, timeout=60)
+            if response.status_code != 200:
+                ui_print("[plex error]: metadata fetch failed for '" + title + "' (HTTP " + str(response.status_code) + ")", debug=ui_settings.debug)
+                return None
+            parsed = json.loads(response.content, object_hook=lambda d: SimpleNamespace(**d))
+            if hasattr(parsed, 'MediaContainer') and hasattr(parsed.MediaContainer, 'Metadata'):
+                item.__dict__.update(parsed.MediaContainer.Metadata[0].__dict__)
+            item.EID = setEID(item)
+            return item
+        except Exception as e:
+            ui_print("[plex error]: failed to fetch metadata for '" + title + "': " + str(e), debug=ui_settings.debug)
+            return None
+
     def __new__(self,silent=False):
         global current_library
         list_ = []

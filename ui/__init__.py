@@ -545,6 +545,404 @@ def repair_broken_media(non_interactive=False):
         ui_print('Press Enter to return to the main menu.')
         input()
 
+def _parse_plex_eids(item):
+    """Extract imdb/tmdb/tvdb ids from a Plex media item's EID list."""
+    ids = {'imdb': None, 'tmdb': None, 'tvdb': None}
+    eids = getattr(item, 'EID', None) or []
+    for eid in eids:
+        try:
+            service, value = str(eid).split('://', 1)
+        except ValueError:
+            continue
+        service = service.lower()
+        if service in ids and value:
+            ids[service] = value
+    return ids
+
+def _prompt_choice(label, items, name_attr='name', id_attr='id'):
+    """Print a numbered list and return the chosen item, or None if cancelled."""
+    if not items:
+        ui_print('No ' + label.lower() + ' available.')
+        return None
+    print()
+    print('Select ' + label + ':')
+    for index, item in enumerate(items):
+        name = getattr(item, name_attr, None) or getattr(item, 'path', str(item))
+        print(str(index + 1) + ') ' + str(name))
+    print('0) Cancel')
+    print()
+    while True:
+        choice = input('Choose ' + label + ': ').strip()
+        if choice == '0':
+            return None
+        if choice.isdigit() and 1 <= int(choice) <= len(items):
+            return items[int(choice) - 1]
+        print('Invalid choice, try again.')
+
+def _ensure_arr_settings(service, service_label, url_setting_name, key_setting_name):
+    """
+    Ensure Arr base_url + api_key work. Prompt and persist if needed.
+    Returns True if connected, False if user cancelled.
+    """
+    from settings import settings_list
+
+    def _find_setting(name):
+        for category, allsettings in settings_list:
+            for setting in allsettings:
+                if setting.name == name:
+                    return setting
+        return None
+
+    while not service.probe():
+        print()
+        if not service.base_url or not service.api_key:
+            print(service_label + ' is not configured yet.')
+        else:
+            print('Could not reach ' + service_label + ' at "' + service.base_url + '" with the current API key.')
+        print('Enter settings below, or press Enter on base URL to cancel.')
+        print()
+        url_setting = _find_setting(url_setting_name)
+        key_setting = _find_setting(key_setting_name)
+        if url_setting is None or key_setting is None:
+            ui_print('Error: ' + service_label + ' settings are missing from settings_list.')
+            return False
+        print('Current base URL: ' + (service.base_url or '(empty)'))
+        new_url = input('Please specify your ' + service_label + ' base URL: ').strip()
+        if new_url == '':
+            return False
+        url_setting.set(new_url)
+        print()
+        print('Current API key: ' + (('*' * min(8, len(service.api_key))) if service.api_key else '(empty)'))
+        new_key = input('Please specify your ' + service_label + ' API Key: ').strip()
+        if new_key == '':
+            return False
+        key_setting.set(new_key)
+        save(doprint=False)
+        if service.probe():
+            print()
+            print(service_label + ' connection OK.')
+            return True
+        print()
+        print(service_label + ' still unreachable. Check URL/API key and try again.')
+    return True
+
+def import_plex_to_radarr():
+    ui_cls('Options/Import Plex library into Radarr/')
+    import content.services.plex as plex
+    import content.services.radarr as radarr
+
+    if not plex.users:
+        ui_print('Error: No Plex users configured. Set up Plex users in Settings first.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+    if not getattr(plex.library, 'url', None):
+        ui_print('Error: Plex server address not configured.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    if not _ensure_arr_settings(radarr, 'Radarr', 'Radarr Base URL', 'Radarr API Key'):
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    profiles = radarr.get_quality_profiles()
+    folders = radarr.get_root_folders()
+    profile = _prompt_choice('Quality Profile', profiles, name_attr='name')
+    if profile is None:
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+    folder = _prompt_choice('Root Folder', folders, name_attr='path')
+    if folder is None:
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    root_path = getattr(folder, 'path', None)
+    quality_profile_id = getattr(profile, 'id', None)
+    if not root_path or quality_profile_id is None:
+        ui_print('Error: invalid quality profile or root folder selection.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    print()
+    ui_print('Scanning Plex movie library (including unavailable items)...')
+    movies = plex.library.list_for_arr_import('movie')
+    if not movies:
+        ui_print('No movies found to import.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    print()
+    print('About to import ' + str(len(movies)) + ' movie(s) into Radarr.')
+    print('  Quality Profile: ' + str(getattr(profile, 'name', quality_profile_id)))
+    print('  Root Folder:     ' + str(root_path))
+    print('  Search on add:   yes')
+    print('  Each title is processed as soon as its IDs are available.')
+    print()
+    confirm = input('Continue? [y/N]: ').strip().lower()
+    if confirm not in ('y', 'yes'):
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    ui_print('Loading existing Radarr movies for duplicate checks...')
+    existing_tmdb, existing_imdb = radarr.get_existing_movies()
+
+    added = 0
+    skipped_existing = 0
+    skipped_no_id = 0
+    failed = 0
+    total = len(movies)
+
+    print()
+    for index, item in enumerate(movies):
+        title = getattr(item, 'title', 'unknown')
+        year = getattr(item, 'year', '')
+        label = title + ((' (' + str(year) + ')') if year else '')
+        prefix = '[' + str(index + 1) + '/' + str(total) + '] '
+
+        item = plex.library.enrich_for_arr_import(item)
+        if item is None:
+            ui_print(prefix + 'failed (metadata): ' + label)
+            failed += 1
+            continue
+
+        ids = _parse_plex_eids(item)
+        tmdb_id = int(ids['tmdb']) if ids['tmdb'] and str(ids['tmdb']).isdigit() else None
+        imdb_id = ids['imdb']
+
+        if not tmdb_id and not imdb_id:
+            ui_print(prefix + 'skip (no id): ' + label)
+            skipped_no_id += 1
+            continue
+
+        if tmdb_id and tmdb_id in existing_tmdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+        if imdb_id and str(imdb_id).lower() in existing_imdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+
+        lookup = radarr.lookup_movie(tmdb_id=tmdb_id, imdb_id=imdb_id)
+        if lookup is None:
+            ui_print(prefix + 'failed (lookup): ' + label)
+            failed += 1
+            continue
+
+        lookup_tmdb = getattr(lookup, 'tmdbId', None)
+        lookup_imdb = getattr(lookup, 'imdbId', None)
+        if lookup_tmdb and int(lookup_tmdb) in existing_tmdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+        if lookup_imdb and str(lookup_imdb).lower() in existing_imdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+
+        ok, error = radarr.add_movie(lookup, quality_profile_id, root_path, search=True)
+        if ok:
+            ui_print(prefix + 'added: ' + label)
+            added += 1
+            if lookup_tmdb:
+                existing_tmdb.add(int(lookup_tmdb))
+            if lookup_imdb:
+                existing_imdb.add(str(lookup_imdb).lower())
+        else:
+            ui_print(prefix + 'failed: ' + label + ' — ' + str(error))
+            failed += 1
+        time.sleep(0.25)
+
+    print()
+    ui_print('Radarr import complete.')
+    ui_print('  Added:            ' + str(added))
+    ui_print('  Skipped existing: ' + str(skipped_existing))
+    ui_print('  Skipped no id:    ' + str(skipped_no_id))
+    ui_print('  Failed:           ' + str(failed))
+    print()
+    input('Press Enter to return to the main menu.')
+
+def import_plex_to_sonarr():
+    ui_cls('Options/Import Plex library into Sonarr/')
+    import content.services.plex as plex
+    import content.services.sonarr as sonarr
+
+    if not plex.users:
+        ui_print('Error: No Plex users configured. Set up Plex users in Settings first.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+    if not getattr(plex.library, 'url', None):
+        ui_print('Error: Plex server address not configured.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    if not _ensure_arr_settings(sonarr, 'Sonarr', 'Sonarr Base URL', 'Sonarr API Key'):
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    profiles = sonarr.get_quality_profiles()
+    folders = sonarr.get_root_folders()
+    language_profiles = sonarr.get_language_profiles()
+
+    profile = _prompt_choice('Quality Profile', profiles, name_attr='name')
+    if profile is None:
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+    folder = _prompt_choice('Root Folder', folders, name_attr='path')
+    if folder is None:
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    language_profile_id = None
+    if language_profiles:
+        language_profile = _prompt_choice('Language Profile', language_profiles, name_attr='name')
+        if language_profile is None:
+            print()
+            input('Press Enter to return to the main menu.')
+            return
+        language_profile_id = getattr(language_profile, 'id', None)
+
+    root_path = getattr(folder, 'path', None)
+    quality_profile_id = getattr(profile, 'id', None)
+    if not root_path or quality_profile_id is None:
+        ui_print('Error: invalid quality profile or root folder selection.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    print()
+    ui_print('Scanning Plex TV library (including unavailable items)...')
+    shows = plex.library.list_for_arr_import('show')
+    if not shows:
+        ui_print('No shows found to import.')
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    print()
+    print('About to import ' + str(len(shows)) + ' show(s) into Sonarr.')
+    print('  Quality Profile: ' + str(getattr(profile, 'name', quality_profile_id)))
+    print('  Root Folder:     ' + str(root_path))
+    if language_profile_id is not None:
+        print('  Language Profile: ' + str(language_profile_id))
+    print('  Search on add:   yes')
+    print('  Each title is processed as soon as its IDs are available.')
+    print()
+    confirm = input('Continue? [y/N]: ').strip().lower()
+    if confirm not in ('y', 'yes'):
+        print()
+        input('Press Enter to return to the main menu.')
+        return
+
+    ui_print('Loading existing Sonarr series for duplicate checks...')
+    existing_tvdb, existing_tmdb, existing_imdb = sonarr.get_existing_series()
+
+    added = 0
+    skipped_existing = 0
+    skipped_no_id = 0
+    failed = 0
+    total = len(shows)
+
+    print()
+    for index, item in enumerate(shows):
+        title = getattr(item, 'title', 'unknown')
+        year = getattr(item, 'year', '')
+        label = title + ((' (' + str(year) + ')') if year else '')
+        prefix = '[' + str(index + 1) + '/' + str(total) + '] '
+
+        item = plex.library.enrich_for_arr_import(item)
+        if item is None:
+            ui_print(prefix + 'failed (metadata): ' + label)
+            failed += 1
+            continue
+
+        ids = _parse_plex_eids(item)
+        tvdb_id = int(ids['tvdb']) if ids['tvdb'] and str(ids['tvdb']).isdigit() else None
+        tmdb_id = int(ids['tmdb']) if ids['tmdb'] and str(ids['tmdb']).isdigit() else None
+        imdb_id = ids['imdb']
+
+        if not tvdb_id and not tmdb_id and not imdb_id:
+            ui_print(prefix + 'skip (no id): ' + label)
+            skipped_no_id += 1
+            continue
+
+        if tvdb_id and tvdb_id in existing_tvdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+        if tmdb_id and tmdb_id in existing_tmdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+        if imdb_id and str(imdb_id).lower() in existing_imdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+
+        lookup = sonarr.lookup_series(tvdb_id=tvdb_id, tmdb_id=tmdb_id, imdb_id=imdb_id)
+        if lookup is None:
+            ui_print(prefix + 'failed (lookup): ' + label)
+            failed += 1
+            continue
+
+        lookup_tvdb = getattr(lookup, 'tvdbId', None)
+        lookup_tmdb = getattr(lookup, 'tmdbId', None)
+        lookup_imdb = getattr(lookup, 'imdbId', None)
+        if lookup_tvdb and int(lookup_tvdb) in existing_tvdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+        if lookup_tmdb and int(lookup_tmdb) in existing_tmdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+        if lookup_imdb and str(lookup_imdb).lower() in existing_imdb:
+            ui_print(prefix + 'skip (exists): ' + label)
+            skipped_existing += 1
+            continue
+
+        ok, error = sonarr.add_series(
+            lookup,
+            quality_profile_id,
+            root_path,
+            language_profile_id=language_profile_id,
+            search=True,
+        )
+        if ok:
+            ui_print(prefix + 'added: ' + label)
+            added += 1
+            if lookup_tvdb:
+                existing_tvdb.add(int(lookup_tvdb))
+            if lookup_tmdb:
+                existing_tmdb.add(int(lookup_tmdb))
+            if lookup_imdb:
+                existing_imdb.add(str(lookup_imdb).lower())
+        else:
+            ui_print(prefix + 'failed: ' + label + ' — ' + str(error))
+            failed += 1
+        time.sleep(0.25)
+
+    print()
+    ui_print('Sonarr import complete.')
+    ui_print('  Added:            ' + str(added))
+    ui_print('  Skipped existing: ' + str(skipped_existing))
+    ui_print('  Skipped no id:    ' + str(skipped_no_id))
+    ui_print('  Failed:           ' + str(failed))
+    print()
+    input('Press Enter to return to the main menu.')
+
 def options():
     current_module = sys.modules[__name__]
     list = [
@@ -554,6 +952,8 @@ def options():
         option('Scraper', current_module, 'scrape'),
         option('Web Interface', current_module, 'web_interface'),
         option('Repair broken media', current_module, 'repair_broken_media'),
+        option('Import Plex library into Radarr', current_module, 'import_plex_to_radarr'),
+        option('Import Plex library into Sonarr', current_module, 'import_plex_to_sonarr'),
     ]
     ui_cls('Options/',update=update_available())
     for index, option_ in enumerate(list):

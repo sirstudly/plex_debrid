@@ -373,7 +373,14 @@ settings_list = [
         setting('Local ignore list path', 'Please provide a path where the list ignored media items should be saved: ', content.services.textfile.library.ignore, 'path', hidden=True),
         setting('Jellyfin API Key', 'Please specify your Jellyfin API Key: ', content.services.jellyfin, 'api_key', hidden=True),
         setting('Jellyfin server address', 'Please enter your Jellyfin server address: ', content.services.jellyfin.library, 'url', hidden=True),
-    
+        setting('Radarr Base URL', 'Please specify your Radarr base URL (e.g. http://127.0.0.1:7878): ', content.services.radarr, 'base_url',
+                help='Base URL including host and port used to reach Radarr for Plex library import.'),
+        setting('Radarr API Key', 'Please specify your Radarr API Key: ', content.services.radarr, 'api_key',
+                help='API key from Radarr Settings → General. Required to import the Plex library into Radarr.'),
+        setting('Sonarr Base URL', 'Please specify your Sonarr base URL (e.g. http://127.0.0.1:8989): ', content.services.sonarr, 'base_url',
+                help='Base URL including host and port used to reach Sonarr for Plex library import.'),
+        setting('Sonarr API Key', 'Please specify your Sonarr API Key: ', content.services.sonarr, 'api_key',
+                help='API key from Sonarr Settings → General. Required to import the Plex library into Sonarr.'),
     ]
         ],
     ['Scraper Settings', [
