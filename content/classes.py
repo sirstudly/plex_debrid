@@ -1057,7 +1057,7 @@ class media:
         else:
             match = next((x for x in media.ignore_queue if self == x), None)
             if match is not None:
-                if match.ignored_count <= retries:
+                if match.ignored_count < retries:
                     match.ignored_count += 1
                     ui_print(message + ' - attempt ' + str(match.ignored_count) + '/' + str(retries))
                 else:
