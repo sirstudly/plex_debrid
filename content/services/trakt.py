@@ -398,20 +398,28 @@ class watchlist(classes.watchlist):
     def __init__(self):
         global current_user
         global lists
-        if len(lists) > 0:
-            ui_print('[trakt] getting all trakt lists ...')
         self.data = []
+        if len(lists) == 0:
+            return
+        if len(users) == 0:
+            ui_print('[trakt] skipping lists: no Trakt users configured.')
+            return
+        ui_print('[trakt] getting all trakt lists ...')
         for list in lists:
             list_type = "public"
-            for user in users:
-                if list == user[0] + "'s watchlist":
+            user = users[0]
+            for u in users:
+                if list == u[0] + "'s watchlist":
                     list_type = "watchlist"
+                    user = u
                     break
-                if list == user[0] + "'s collection":
+                if list == u[0] + "'s collection":
                     list_type = "collection"
+                    user = u
                     break
-                if list.startswith(user[0] + "'s private list:"):
+                if list.startswith(u[0] + "'s private list:"):
                     list_type = "private"
+                    user = u
                     break
             current_user = user
             if list_type == "watchlist":
@@ -531,14 +539,19 @@ class watchlist(classes.watchlist):
         global users
         refresh = False
         new_watchlist = []
+        if len(lists) == 0 or len(users) == 0:
+            return False
         for list in lists:
             list_type = "public"
-            for user in users:
-                if list == user[0] + "'s watchlist":
+            user = users[0]
+            for u in users:
+                if list == u[0] + "'s watchlist":
                     list_type = "watchlist"
+                    user = u
                     break
-                if list.startswith(user[0] + "'s private list:"):
+                if list.startswith(u[0] + "'s private list:"):
                     list_type = "private"
+                    user = u
                     break
             current_user = user
             if list_type == "watchlist":
